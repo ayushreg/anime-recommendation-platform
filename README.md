@@ -1,7 +1,11 @@
 # Kura — Local Anime Vault
 
 <p align="center">
-  <img src="docs/brand/logo.png" alt="Kura logo" width="128" />
+  <img src="docs/brand/logo.png" alt="Kura logo" width="140" />
+</p>
+
+<p align="center">
+  <img src="docs/brand/mascot.png" alt="Kura mascot" width="220" />
 </p>
 
 <p align="center">
@@ -20,9 +24,15 @@
 
 On first `docker compose up --build`, the API container automatically runs the seed script, which:
 
-1. **Downloads ~12,000 real titles** from the public [Manami anime-offline-database](https://github.com/manami-project/anime-offline-database) on GitHub (titles, tags, images when available).
-2. **If that download fails** (offline, rate limit, etc.), **generates ~12,000 synthetic titles** and still injects **25 well-known demos** (One Piece, Naruto, Attack on Titan, …) so search stays intuitive.
+1. **Downloads ~12,000 real titles** from the public [Manami anime-offline-database](https://github.com/manami-project/anime-offline-database) **GitHub Releases** feed (titles, tags, **poster images**).
+2. **If that download fails** (offline, rate limit, etc.), **generates synthetic titles** and still injects **25 well-known demos** with MAL cover art so search stays intuitive.
 3. Creates a **demo account** with sample ratings so “For You” works immediately.
+
+To force a catalog refresh with posters after an old synthetic seed:
+
+```bash
+docker compose exec api python -m app.seed --reseed-images
+```
 
 First boot can take several minutes. Later boots reuse the seeded Postgres volume.
 

@@ -63,9 +63,17 @@ function AnimeCard({ anime, token, onRate, reason, method, userScore }) {
         onClick={() => rememberRecent(anime)}
       >
         {anime.image_url ? (
-          <img src={anime.image_url} alt="" loading="lazy" />
+          <img
+            src={anime.image_url}
+            alt=""
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "/poster-fallback.png";
+            }}
+          />
         ) : (
-          <div className="poster-fallback" data-letter={anime.title.slice(0, 1)}>
+          <div className="poster-fallback">
             <span>{anime.title.slice(0, 1)}</span>
           </div>
         )}
@@ -78,19 +86,19 @@ function AnimeCard({ anime, token, onRate, reason, method, userScore }) {
             {anime.title}
           </Link>
         </h3>
-        <p className="meta">
-          {[anime.type, anime.year].filter(Boolean).join(" · ")}
-        </p>
+        <p className="meta">{[anime.type, anime.year].filter(Boolean).join(" · ")}</p>
         {(reason || method) && (
           <p className="reason">
             {method && <span className="method-tag">{method}</span>}
             {reason}
           </p>
         )}
-        {!reason && <p className="genres">{(anime.genres || "").split(",").slice(0, 3).join(" · ")}</p>}
+        {!reason && (
+          <p className="genres">{(anime.genres || "").split(",").slice(0, 2).join(" · ")}</p>
+        )}
         {token && onRate && (
           <div className="rate-strip" role="group" aria-label={`Rate ${anime.title}`}>
-            {[6, 7, 8, 9, 10].map((s) => (
+            {[7, 8, 9, 10].map((s) => (
               <button key={s} type="button" onClick={() => onRate(anime.id, s)} title={`Rate ${s}/10`}>
                 {s}
               </button>
@@ -102,10 +110,10 @@ function AnimeCard({ anime, token, onRate, reason, method, userScore }) {
   );
 }
 
-function EmptyState({ icon = "search", title, body, action }) {
+function EmptyState({ title, body, action }) {
   return (
     <div className="empty">
-      <Icon name={icon} size={36} />
+      <img src="/mascot-chibi.png" alt="" className="empty-mascot" />
       <h2>{title}</h2>
       <p>{body}</p>
       {action}
@@ -158,6 +166,10 @@ function Shell({ children, searchSlot }) {
         </nav>
 
         <div className="rail-foot">
+          <div className="rail-mascot" aria-hidden>
+            <img src="/mascot-chibi.png" alt="" />
+            <span>Your vault buddy</span>
+          </div>
           {stats && (
             <div className="vault-meter" title="Catalog health">
               <div className="meter-label">
@@ -240,6 +252,11 @@ function SearchBar({ q, setQ, onSubmit, mode, setMode, suggestions, onPick, busy
           {suggestions.map((s) => (
             <li key={s.id}>
               <button type="button" onClick={() => onPick(s)}>
+                {s.image_url ? (
+                  <img src={s.image_url} alt="" className="suggest-thumb" />
+                ) : (
+                  <span className="suggest-thumb" />
+                )}
                 <span>{s.title}</span>
                 <small>{[s.type, s.year].filter(Boolean).join(" · ")}</small>
               </button>
@@ -391,6 +408,36 @@ function Discover() {
         />
       }
     >
+      {!q && !genre && !type && (
+        <section className="feature-hero">
+          <div
+            className="feature-hero-bg"
+            style={{
+              backgroundImage: `url(${items[0]?.image_url || "/hero-banner.png"})`,
+            }}
+          />
+          <div className="feature-hero-copy">
+            <p className="eyebrow">Tonight in your vault</p>
+            <h1>Pick a poster. Rate it. Get better picks.</h1>
+            <p>
+              Dense local catalog with real cover art — search vibes, stack a shelf, let hybrid
+              ranking learn what you actually finish.
+            </p>
+            <div className="hero-actions">
+              <button type="button" className="btn" onClick={() => inputRef.current?.focus()}>
+                Start searching
+              </button>
+              <Link className="btn ghost-neon" to="/recommendations">
+                Open For You
+              </Link>
+            </div>
+          </div>
+          <div className="feature-hero-mascot" aria-hidden>
+            <img src="/mascot.png" alt="" />
+          </div>
+        </section>
+      )}
+
       <section className="panel-head">
         <div>
           <p className="eyebrow">Discover</p>
@@ -456,7 +503,6 @@ function Discover() {
         <p className="pad">Loading vault…</p>
       ) : items.length === 0 && !busy ? (
         <EmptyState
-          icon="search"
           title="Nothing on this shelf"
           body="Try another spelling, a single keyword, or pick a genre chip above."
           action={
@@ -555,7 +601,6 @@ function Recommendations() {
       {error && <p className="toast">{error}</p>}
       {rows.length === 0 ? (
         <EmptyState
-          icon="foryou"
           title="Rate a few titles first"
           body="Open Discover, score shows you like (7+), then come back for personalized picks."
           action={
@@ -616,7 +661,6 @@ function Shelf() {
       </section>
       {items.length === 0 ? (
         <EmptyState
-          icon="shelf"
           title="Shelf is empty"
           body="On any title page, tap Add to shelf to queue it here."
           action={<Link className="btn" to="/">Browse catalog</Link>}
@@ -684,7 +728,6 @@ function Library() {
       </section>
       {sorted.length === 0 ? (
         <EmptyState
-          icon="ratings"
           title="No ratings yet"
           body="Rate titles from Discover or a detail page. Use 7–10 for shows you want more of."
           action={<Link className="btn" to="/">Start rating</Link>}
@@ -778,7 +821,14 @@ function Detail() {
       <section className="detail-hero">
         <div className="detail-art">
           {anime.image_url ? (
-            <img src={anime.image_url} alt="" />
+            <img
+              src={anime.image_url}
+              alt=""
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = "/poster-fallback.png";
+              }}
+            />
           ) : (
             <div className="poster-fallback large">
               <span>{anime.title.slice(0, 1)}</span>
@@ -879,8 +929,7 @@ function Login() {
   return (
     <div className="auth-screen">
       <div className="auth-visual" aria-hidden>
-        <img src="/logo.png" alt="" />
-        <div className="auth-glow" />
+        <img src="/mascot.png" alt="" className="auth-mascot" />
       </div>
       <form className="auth-card" onSubmit={submit}>
         <p className="eyebrow">Kura</p>
