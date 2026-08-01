@@ -1,4 +1,4 @@
-import React, { useEffect, useEffectEvent, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
@@ -18,6 +18,8 @@ const GENRE_SHORTCUTS = [
   "Mecha",
   "Mystery",
 ];
+
+const TYPES = ["TV", "Movie", "OVA", "ONA", "Special"];
 
 const STATUS_LABELS = {
   plan_to_watch: "Plan to watch",
@@ -343,7 +345,7 @@ function Discover() {
   const inputRef = useRef(null);
   const debouncedQ = useDebounced(q, 260);
 
-  const clearToast = useEffectEvent(() => setMessage(""));
+  const clearToast = () => setMessage("");
 
   useEffect(() => {
     setRecent(readRecent());
@@ -725,7 +727,7 @@ function Watching() {
   const { token, user, loading } = useAuth();
   const [rows, setRows] = useState([]);
   const [message, setMessage] = useState("");
-  const clearToast = useEffectEvent(() => setMessage(""));
+  const clearToast = () => setMessage("");
 
   async function load() {
     const data = await api("/api/library?status=watching", { token });
@@ -781,7 +783,7 @@ function Shelf() {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState("all");
   const [message, setMessage] = useState("");
-  const clearToast = useEffectEvent(() => setMessage(""));
+  const clearToast = () => setMessage("");
 
   async function load() {
     const path = filter === "all" ? "/api/library" : `/api/library?status=${filter}`;
@@ -967,7 +969,7 @@ function Detail() {
   const [message, setMessage] = useState("");
   const [myScore, setMyScore] = useState(null);
   const [entry, setEntry] = useState(null);
-  const clearToast = useEffectEvent(() => setMessage(""));
+  const clearToast = () => setMessage("");
 
   async function refreshLibrary() {
     if (!token) return;

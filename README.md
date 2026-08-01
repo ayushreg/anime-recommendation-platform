@@ -1,51 +1,73 @@
 # Kura — Local Anime Vault
 
 <p align="center">
-  <img src="docs/brand/logo.png" alt="Kura logo" width="140" />
+  <img src="docs/brand/logo.png" alt="Kura logo" width="120" />
 </p>
 
 <p align="center">
-  <img src="docs/brand/mascot.png" alt="Kura mascot" width="220" />
+  <b>A local-first anime discovery + tracking app I built from scratch.</b><br/>
+  Hybrid recommendations · episode progress · dense poster catalog · Docker one-command boot
 </p>
 
 <p align="center">
-  <img src="docs/brand/hero.png" alt="Kura hero" width="100%" />
+  <img src="docs/brand/mascot.png" alt="Kura mascot" width="200" />
 </p>
 
-**Kura** is a local-first anime recommendation vault. Run it on your machine, browse a large catalog, rate what you watch, and get hybrid personalized picks — no cloud account required beyond your own Docker stack.
+**Author:** [Ayush Regmi](https://github.com/ayushreg) · **Repo:** [ayushreg/anime-recommendation-platform](https://github.com/ayushreg/anime-recommendation-platform)
 
-**Repo:** https://github.com/ayushreg/anime-recommendation-platform
+I got tired of cloud-only anime lists that want an account before they'll even show me a poster. **Kura** (“vault”) is my answer: a full-stack recommendation system you run on your own machine. Seed ~12k titles with cover art, rate what you finish, track what you're mid-season on, and let a hybrid engine (content + collaborative filtering) suggest what to watch next.
 
 ---
 
-## Does this work out of the box?
+## Screenshots
 
-**Yes.** You do **not** need to upload CSVs, buy API keys, or type in anime titles by hand.
+### Discover — dense poster vault
+<img src="docs/screenshots/01-discover.png" alt="Kura Discover page with poster grid" width="100%" />
 
-On first `docker compose up --build`, the API container automatically runs the seed script, which:
+### Login — neon vault door
+<img src="docs/screenshots/02-login.png" alt="Kura login page with mascot" width="100%" />
 
-1. **Downloads ~12,000 real titles** from the public [Manami anime-offline-database](https://github.com/manami-project/anime-offline-database) **GitHub Releases** feed (titles, tags, **poster images**).
-2. **If that download fails** (offline, rate limit, etc.), **generates synthetic titles** and still injects **25 well-known demos** with MAL cover art so search stays intuitive.
-3. Creates a **demo account** with sample ratings so “For You” works immediately.
+### For You — hybrid personalized picks
+<img src="docs/screenshots/03-for-you.png" alt="Kura For You recommendations" width="100%" />
 
-To force a catalog refresh with posters after an old synthetic seed:
+### Watching — continue where you left off
+<img src="docs/screenshots/04-watching.png" alt="Kura currently watching page" width="100%" />
 
-```bash
-docker compose exec api python -m app.seed --reseed-images
-```
+### Title detail — rate, track, similar shows
+<img src="docs/screenshots/05-detail.png" alt="Kura anime detail page" width="100%" />
 
-First boot can take several minutes. Later boots reuse the seeded Postgres volume.
+### Shelf — statuses for your whole list
+<img src="docs/screenshots/06-shelf.png" alt="Kura shelf with status filters" width="100%" />
 
-| Requirement | Notes |
-|-------------|--------|
-| Docker Desktop running | Required for the one-command path |
-| Internet on first seed | Recommended for real Manami titles; optional if you accept synthetic + demo titles |
-| Manual data entry | **Not required** |
+---
 
-Demo login after boot:
+## Why I built this
 
-- Email: `demo@anime.app`
-- Password: `demo1234`
+I wanted a project that touched **real product surfaces** (search, personalization, tracking) and **real infra** (Postgres, Redis, Docker, background workers) — not just a toy notebook model.
+
+Goals I set for myself:
+
+1. One command should bring the whole stack up with real data and posters
+2. Recommendations should be explainable (content vs collaborative vs hybrid)
+3. Tracking should feel automatic — rate a show and it completes; +1 an episode and progress moves
+4. The UI should feel like a late-night catalog site, not a generic CRUD admin
+
+---
+
+## Features
+
+| Area | What it does |
+|------|----------------|
+| **Discover** | Hybrid / lexical / semantic search, autocomplete, genre + type filters, recently opened |
+| **Continue watching** | Home-row of in-progress titles with progress bars |
+| **Watching** | Dedicated currently-watching queue with **+1 episode** |
+| **Shelf** | Plan / watching / completed / on hold / dropped |
+| **Library** | Your ratings, sortable |
+| **For You** | Hybrid recs (TF-IDF content ~65% + collaborative ~35%), Redis-cached |
+| **Auto-tracking** | Rating → completed; finishing last episode via +1 → completed |
+| **Ops** | JWT auth, Redis rate limits, Prometheus `/metrics`, health checks, model refit worker |
+
+Demo login after boot: `demo@anime.app` / `demo1234`
 
 ---
 
@@ -60,70 +82,79 @@ docker compose up --build
 | http://localhost:3000 | Kura web app |
 | http://localhost:8000/docs | Interactive API docs |
 | http://localhost:8000/metrics | Prometheus metrics |
-| http://localhost:8000/api/health | Dependency health check |
+| http://localhost:8000/api/health | Dependency health |
 
-Stop with `Ctrl+C` or `docker compose down`. Reset the database with `docker compose down -v` for a clean re-seed.
+First boot downloads the [Manami offline database](https://github.com/manami-project/anime-offline-database) from **GitHub Releases** (~12k titles + posters). Later boots reuse the Postgres volume.
 
----
+Force a poster-rich reseed if you ever landed on synthetic-only data:
 
-## What you can do in the app
+```bash
+docker compose exec api python -m app.seed --reseed-images
+```
 
-Local-first app shell (not a marketing landing page):
-
-- **Discover** — command search with autocomplete, hybrid / lexical / semantic modes, genre chips, type filters, recently opened titles, **Continue watching**
-- **Watching** — currently-watching queue with **+1 episode** progress bars; auto-completes when you finish
-- **For You** — hybrid personalized recommendations (content + collaborative)
-- **Shelf** — full list with statuses (plan / watching / completed / on hold / dropped)
-- **Library** — your ratings, sortable
-- **Title pages** — start watching, episode tick, status picker, rating (auto-marks completed), similar titles
-
-Press `/` anywhere to focus search.
-
-**Auto-tracking:** rating a title marks it completed; tapping **+1 episode** starts/continues Watching and completes when you hit the episode count.
+Stop with `Ctrl+C` or `docker compose down`. Wipe data with `docker compose down -v`.
 
 ---
 
-## Ranking engine
+## Architecture (short version)
 
-1. **Lexical / TF-IDF search** — match query text to titles, genres, themes, synopsis (with multi-token SQL fallback)
-2. **Semantic search** — TruncatedSVD dense vectors (`mode=semantic`)
-3. **Hybrid personalized recommendations** — content similarity + collaborative filtering from user ratings
+```
+Browser (React/Vite/nginx)
+        │  /api/*
+        ▼
+   FastAPI  ── Redis (cache + rate limit)
+        │
+   PostgreSQL (anime, users, ratings, library/watchlist)
+        │
+   Worker process (periodic TF-IDF + SVD refit)
+```
 
-Also includes JWT auth, Redis caching, API rate limiting, and a background model refit worker.
+Ranking paths:
+
+1. **Lexical / TF-IDF** — cosine over title, genres, themes, synopsis (+ multi-token SQL fallback)
+2. **Semantic** — TruncatedSVD dense vectors (`mode=semantic`)
+3. **Hybrid For You** — blend content neighbors with users who rated like you
+
+Deeper notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ---
 
 ## Stack
 
-| Layer | Technology |
-|-------|------------|
+| Layer | Tech |
+|-------|------|
 | Frontend | React 19, Vite, React Router, nginx |
-| API | FastAPI, Uvicorn, Pydantic, JWT (python-jose), Passlib/bcrypt |
-| ML / ranking | scikit-learn TF-IDF, cosine similarity, collaborative filtering, TruncatedSVD embeddings |
-| Data | PostgreSQL 16, SQLAlchemy 2, Alembic |
-| Catalog seed | Manami offline DB (primary) + synthetic generator + famous-title backfill |
-| Cache / limits | Redis 7 |
-| Observability | Prometheus metrics (`/metrics`), structured health checks |
+| API | FastAPI, Uvicorn, Pydantic, JWT, Passlib/bcrypt |
+| ML | scikit-learn TF-IDF, cosine similarity, collaborative filtering, TruncatedSVD |
+| Data | PostgreSQL 16, SQLAlchemy 2 |
+| Catalog | Manami Releases dump + famous-title backfill |
+| Cache | Redis 7 |
 | Infra | Docker Compose, GitHub Actions CI |
 
-Brand assets live in [`docs/brand/`](docs/brand/) (logo, hero, icon sheet).
+Brand assets: [`docs/brand/`](docs/brand/) · UI captures: [`docs/screenshots/`](docs/screenshots/)
 
 ---
 
 ## API highlights
 
-- `GET /api/anime/search?q=&mode=hybrid|semantic|lexical`
-- `GET /api/anime/suggest?q=` — autocomplete
-- `GET /api/anime/genres` · `GET /api/anime/browse?genre=&type=&year=`
-- `GET /api/recommendations` (JWT)
-- `POST /api/ratings` · `GET /api/ratings/me` (JWT)
-- `POST|DELETE /api/watchlist/{id}` · `GET /api/watchlist` (JWT)
-- `GET /api/anime/{id}/similar`
-- `GET /api/health` · `GET /api/stats` · `GET /metrics`
+```
+GET  /api/anime/search?q=&mode=hybrid|semantic|lexical
+GET  /api/anime/suggest?q=
+GET  /api/anime/genres
+GET  /api/anime/browse?genre=&type=&year=
+GET  /api/recommendations                 (JWT)
+POST /api/ratings                         (JWT)  → also marks completed
+PUT  /api/library/{id}                    (JWT)  status + progress
+POST /api/library/{id}/tick               (JWT)  +1 episode
+GET  /api/library?status=watching         (JWT)
+GET  /api/library/continue                (JWT)
+GET  /api/anime/{id}/similar
+GET  /api/health · /api/stats · /metrics
+```
 
 ---
 
-## Local development (without full Compose UI)
+## Local development (API without Compose UI)
 
 ```bash
 docker compose up db redis -d
@@ -148,6 +179,40 @@ cd backend && pytest -q
 
 ---
 
-## Architecture
+## Challenges I hit (and how I worked through them)
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for request path, caching keys, ranking methods, and service roles.
+Building this wasn't a straight line. A few problems that ate real evenings:
+
+1. **Manami “just works”… until it doesn't.**  
+   The old raw GitHub URL for the offline DB started 404'ing after the project moved datasets to **Releases**. Seed fell back to synthetic titles with **zero posters**, so search for “One Piece” returned empty while the empty-query browse still looked fine. Fix: point seed at the Releases download, add `--reseed-images`, and backfill famous titles with real MAL ids/images.
+
+2. **TF-IDF lied politely.**  
+   Weak cosine hits (`sims > 0`) were ranking random synthetic titles *above* exact lexical matches — so “one piece” could surface nonsense before the SQL fallback ever ran. Fix: always merge **lexical first**, then fill with TF-IDF above a real similarity threshold.
+
+3. **In-memory models vs a growing catalog.**  
+   After inserting demo titles into Postgres, the live API process still held an old fitted matrix. Search looked “broken” until refit. Fix: fit after seed/reseed, and make search prefer durable SQL lexical hits so a stale matrix can't hide real titles.
+
+4. **Watchlist wasn't enough.**  
+   “Add to shelf” doesn't answer “what episode am I on?” Extending the table with `status` / `progress` on a live Postgres volume meant `create_all` alone wouldn't alter columns — so I added a small startup migrator that is careful on SQLite (tests) vs Postgres (Docker).
+
+5. **Making the UI feel alive without shipping piracy.**  
+   I studied the *layout energy* of dense anime catalog sites (poster grids, neon accents, continue-watching rows) and rebuilt Kura as a **legal local vault** with Manami/MAL-sourced metadata and covers — same vibe, clean data story.
+
+6. **Little landmines.**  
+   A missing `TYPES` constant blanked Discover after a refactor; `useEffectEvent` wasn't safe on the React version I pinned, so I ripped it out. Both were “one line” bugs that looked like total black screens until the console told the truth.
+
+---
+
+## What's next (if I keep iterating)
+
+- Import from MyAnimeList XML / AniList for your existing scores  
+- Smarter “next episode” reminders from progress + airing status  
+- Offline-friendly poster cache so covers survive CDN hiccups  
+
+---
+
+## License / credit
+
+Catalog metadata sourced from the community [Manami anime-offline-database](https://github.com/manami-project/anime-offline-database) (ODbL). Cover images are loaded from provider CDNs referenced by that dataset / MAL ids.
+
+Built by **Ayush Regmi** — [github.com/ayushreg](https://github.com/ayushreg)
