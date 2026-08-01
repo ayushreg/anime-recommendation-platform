@@ -18,10 +18,10 @@ Base.metadata.create_all(bind=engine)
 ensure_schema(engine)
 
 app = FastAPI(
-    title="Anime Recommendation Platform",
+    title="Kura Anime Vault",
     description=(
-        "Production-style hybrid recommender: TF-IDF content ranking, collaborative filtering, "
-        "TruncatedSVD semantic embeddings, Redis caching, JWT auth, and Prometheus metrics."
+        "Hybrid anime recommender with TF-IDF search, collaborative filtering, "
+        "semantic embeddings, Redis caching, JWT auth, and Prometheus metrics."
     ),
     version="1.1.0",
 )

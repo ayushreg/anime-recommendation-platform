@@ -591,7 +591,7 @@ img { max-width: 100%; display: block; }
 }
 .section-title .icon { color: var(--cyan); }
 
-/* Dense poster grid — streaming-site energy */
+/* Dense poster grid (streaming-site energy) */
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));

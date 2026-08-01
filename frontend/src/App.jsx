@@ -286,7 +286,7 @@ function SearchBar({ q, setQ, onSubmit, mode, setMode, suggestions, onPick, busy
         ref={inputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search titles, genres, vibes…"
+        placeholder="Search titles, genres, vibes..."
         aria-label="Search anime"
         autoComplete="off"
       />
@@ -417,7 +417,7 @@ function Discover() {
       setPage(p);
       setBooted(true);
       if (!append && data.items.length === 0 && query.trim()) {
-        setMessage(`No matches for “${query.trim()}”. Try a genre chip or shorter keywords.`);
+        setMessage(`No matches for "${query.trim()}". Try a genre chip or a shorter keyword.`);
       }
     } catch (err) {
       setMessage(err.message);
@@ -499,11 +499,11 @@ function Discover() {
             }}
           />
           <div className="feature-hero-copy">
-            <p className="eyebrow">Tonight in your vault</p>
+            <p className="eyebrow">Featured</p>
             <h1>Pick a poster. Rate it. Get better picks.</h1>
             <p>
-              Dense local catalog with real cover art — search vibes, stack a shelf, let hybrid
-              ranking learn what you actually finish.
+              Browse real cover art, save shows to your shelf, and let rankings learn from what you
+              actually finish.
             </p>
             <div className="hero-actions">
               <button type="button" className="btn" onClick={() => inputRef.current?.focus()}>
@@ -525,7 +525,7 @@ function Discover() {
           <p className="eyebrow">Discover</p>
           <h1>{heading}</h1>
           <p className="lede">
-            Browse your local catalog. Rate what you finish so For You can learn your taste.
+            Browse the catalog. Rate what you finish so For You can learn your taste.
           </p>
         </div>
         <div className="head-meta">
@@ -754,8 +754,8 @@ function Watching() {
           <p className="eyebrow">Watching</p>
           <h1>Currently watching</h1>
           <p className="lede">
-            Tap +1 ep as you finish episodes. Hit the end and Kura auto-marks it completed.
-            Rating a title also completes it automatically.
+            Tap +1 ep as you finish episodes. When you hit the end, it marks completed for you.
+            Rating a title also completes it.
           </p>
         </div>
         <span className="head-meta">{rows.length} in progress</span>
@@ -820,7 +820,7 @@ function Shelf() {
         <div>
           <p className="eyebrow">Shelf</p>
           <h1>Your list</h1>
-          <p className="lede">Plan, watch, hold, drop, or finish — tracked on this machine with your account.</p>
+          <p className="lede">Plan, watch, hold, drop, or finish. Tracked on this machine with your account.</p>
         </div>
         <span className="head-meta">{items.length} titles</span>
       </section>
@@ -945,7 +945,7 @@ function Library() {
       {sorted.length === 0 ? (
         <EmptyState
           title="No ratings yet"
-          body="Rate titles from Discover or a detail page. Use 7–10 for shows you want more of."
+          body="Rate titles from Discover or a detail page. Use 7 to 10 for shows you want more of."
           action={<Link className="btn" to="/">Start rating</Link>}
         />
       ) : (
@@ -1045,7 +1045,7 @@ function Detail() {
     });
     setMessage(
       data.status === "completed"
-        ? "Finished — marked completed"
+        ? "Finished. Marked completed"
         : `Now on episode ${data.progress}`
     );
   }

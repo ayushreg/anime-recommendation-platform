@@ -40,5 +40,5 @@ FastAPI  ── Redis rate limit + response cache
 
 ## Observability
 
-- `/api/health` — postgres, redis, embedding readiness
-- `/metrics` — Prometheus HTTP metrics via instrumentator
+- `/api/health`: postgres, redis, embedding readiness
+- `/metrics`: Prometheus HTTP metrics via instrumentator

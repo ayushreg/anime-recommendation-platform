@@ -1,6 +1,6 @@
 import React from "react";
 
-/** Custom stroke icon set for Kura — tangerine signal on chalk strokes */
+/** Custom stroke icon set for Kura (signal accents on chalk strokes) */
 export function Icon({ name, size = 20, className = "" }) {
   const props = {
     width: size,

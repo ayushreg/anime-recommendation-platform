@@ -489,7 +489,7 @@ def load_from_manami(limit: int = 12000) -> list[dict]:
                 "mal_id": mal_id,
                 "title": title[:512],
                 "title_english": (item.get("synonyms") or [None])[0],
-                "synopsis": f"{title} — tagged: {genres or 'General'}.",
+                "synopsis": f"{title}. Tagged: {genres or 'General'}.",
                 "genres": genres,
                 "themes": themes,
                 "studios": ", ".join((item.get("studios") or [])[:4]),

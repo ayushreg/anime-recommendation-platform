@@ -1,12 +1,12 @@
-# Kura — Local Anime Vault
+# Kura: Local Anime Vault
 
 <p align="center">
   <img src="docs/brand/logo.png" alt="Kura logo" width="120" />
 </p>
 
 <p align="center">
-  <b>A local-first anime discovery + tracking app I built from scratch.</b><br/>
-  Hybrid recommendations · episode progress · dense poster catalog · Docker one-command boot
+  <b>A local-first anime discovery and tracking app I built from scratch.</b><br/>
+  Hybrid recommendations, episode progress, dense poster catalog, Docker one-command boot
 </p>
 
 <p align="center">
@@ -15,41 +15,41 @@
 
 **Author:** [Ayush Regmi](https://github.com/ayushreg) · **Repo:** [ayushreg/anime-recommendation-platform](https://github.com/ayushreg/anime-recommendation-platform)
 
-I got tired of cloud-only anime lists that want an account before they'll even show me a poster. **Kura** (“vault”) is my answer: a full-stack recommendation system you run on your own machine. Seed ~12k titles with cover art, rate what you finish, track what you're mid-season on, and let a hybrid engine (content + collaborative filtering) suggest what to watch next.
+I got tired of cloud-only anime lists that want an account before they'll even show me a poster. **Kura** (vault) is my answer: a full-stack recommendation system you run on your own machine. Seed about 12k titles with cover art, rate what you finish, track what you're mid-season on, and let a hybrid engine (content + collaborative filtering) suggest what to watch next.
 
 ---
 
 ## Screenshots
 
-### Discover — dense poster vault
+### Discover: dense poster vault
 <img src="docs/screenshots/01-discover.png" alt="Kura Discover page with poster grid" width="100%" />
 
-### Login — neon vault door
+### Login: neon vault door
 <img src="docs/screenshots/02-login.png" alt="Kura login page with mascot" width="100%" />
 
-### For You — hybrid personalized picks
+### For You: hybrid personalized picks
 <img src="docs/screenshots/03-for-you.png" alt="Kura For You recommendations" width="100%" />
 
-### Watching — continue where you left off
+### Watching: continue where you left off
 <img src="docs/screenshots/04-watching.png" alt="Kura currently watching page" width="100%" />
 
-### Title detail — rate, track, similar shows
+### Title detail: rate, track, similar shows
 <img src="docs/screenshots/05-detail.png" alt="Kura anime detail page" width="100%" />
 
-### Shelf — statuses for your whole list
+### Shelf: statuses for your whole list
 <img src="docs/screenshots/06-shelf.png" alt="Kura shelf with status filters" width="100%" />
 
 ---
 
 ## Why I built this
 
-I wanted a project that touched **real product surfaces** (search, personalization, tracking) and **real infra** (Postgres, Redis, Docker, background workers) — not just a toy notebook model.
+I wanted a project that touched **real product surfaces** (search, personalization, tracking) and **real infra** (Postgres, Redis, Docker, background workers), not just a toy notebook model.
 
 Goals I set for myself:
 
 1. One command should bring the whole stack up with real data and posters
 2. Recommendations should be explainable (content vs collaborative vs hybrid)
-3. Tracking should feel automatic — rate a show and it completes; +1 an episode and progress moves
+3. Tracking should feel automatic: rate a show and it completes; +1 an episode and progress moves
 4. The UI should feel like a late-night catalog site, not a generic CRUD admin
 
 ---
@@ -64,7 +64,7 @@ Goals I set for myself:
 | **Shelf** | Plan / watching / completed / on hold / dropped |
 | **Library** | Your ratings, sortable |
 | **For You** | Hybrid recs (TF-IDF content ~65% + collaborative ~35%), Redis-cached |
-| **Auto-tracking** | Rating → completed; finishing last episode via +1 → completed |
+| **Auto-tracking** | Rating marks completed; finishing the last episode via +1 marks completed |
 | **Ops** | JWT auth, Redis rate limits, Prometheus `/metrics`, health checks, model refit worker |
 
 Demo login after boot: `demo@anime.app` / `demo1234`
@@ -84,7 +84,7 @@ docker compose up --build
 | http://localhost:8000/metrics | Prometheus metrics |
 | http://localhost:8000/api/health | Dependency health |
 
-First boot downloads the [Manami offline database](https://github.com/manami-project/anime-offline-database) from **GitHub Releases** (~12k titles + posters). Later boots reuse the Postgres volume.
+First boot downloads the [Manami offline database](https://github.com/manami-project/anime-offline-database) from **GitHub Releases** (about 12k titles + posters). Later boots reuse the Postgres volume.
 
 Force a poster-rich reseed if you ever landed on synthetic-only data:
 
@@ -111,9 +111,9 @@ Browser (React/Vite/nginx)
 
 Ranking paths:
 
-1. **Lexical / TF-IDF** — cosine over title, genres, themes, synopsis (+ multi-token SQL fallback)
-2. **Semantic** — TruncatedSVD dense vectors (`mode=semantic`)
-3. **Hybrid For You** — blend content neighbors with users who rated like you
+1. **Lexical / TF-IDF**: cosine over title, genres, themes, synopsis (plus multi-token SQL fallback)
+2. **Semantic**: TruncatedSVD dense vectors (`mode=semantic`)
+3. **Hybrid For You**: blend content neighbors with users who rated like you
 
 Deeper notes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -143,7 +143,7 @@ GET  /api/anime/suggest?q=
 GET  /api/anime/genres
 GET  /api/anime/browse?genre=&type=&year=
 GET  /api/recommendations                 (JWT)
-POST /api/ratings                         (JWT)  → also marks completed
+POST /api/ratings                         (JWT)  also marks completed
 PUT  /api/library/{id}                    (JWT)  status + progress
 POST /api/library/{id}/tick               (JWT)  +1 episode
 GET  /api/library?status=watching         (JWT)
@@ -183,30 +183,30 @@ cd backend && pytest -q
 
 Building this wasn't a straight line. A few problems that ate real evenings:
 
-1. **Manami “just works”… until it doesn't.**  
-   The old raw GitHub URL for the offline DB started 404'ing after the project moved datasets to **Releases**. Seed fell back to synthetic titles with **zero posters**, so search for “One Piece” returned empty while the empty-query browse still looked fine. Fix: point seed at the Releases download, add `--reseed-images`, and backfill famous titles with real MAL ids/images.
+1. **Manami "just works" until it doesn't.**  
+   The old raw GitHub URL for the offline DB started 404'ing after the project moved datasets to **Releases**. Seed fell back to synthetic titles with **zero posters**, so search for "One Piece" returned empty while the empty-query browse still looked fine. Fix: point seed at the Releases download, add `--reseed-images`, and backfill famous titles with real MAL ids/images.
 
 2. **TF-IDF lied politely.**  
-   Weak cosine hits (`sims > 0`) were ranking random synthetic titles *above* exact lexical matches — so “one piece” could surface nonsense before the SQL fallback ever ran. Fix: always merge **lexical first**, then fill with TF-IDF above a real similarity threshold.
+   Weak cosine hits (`sims > 0`) were ranking random synthetic titles *above* exact lexical matches, so "one piece" could surface nonsense before the SQL fallback ever ran. Fix: always merge **lexical first**, then fill with TF-IDF above a real similarity threshold.
 
 3. **In-memory models vs a growing catalog.**  
-   After inserting demo titles into Postgres, the live API process still held an old fitted matrix. Search looked “broken” until refit. Fix: fit after seed/reseed, and make search prefer durable SQL lexical hits so a stale matrix can't hide real titles.
+   After inserting demo titles into Postgres, the live API process still held an old fitted matrix. Search looked broken until refit. Fix: fit after seed/reseed, and make search prefer durable SQL lexical hits so a stale matrix can't hide real titles.
 
 4. **Watchlist wasn't enough.**  
-   “Add to shelf” doesn't answer “what episode am I on?” Extending the table with `status` / `progress` on a live Postgres volume meant `create_all` alone wouldn't alter columns — so I added a small startup migrator that is careful on SQLite (tests) vs Postgres (Docker).
+   "Add to shelf" doesn't answer "what episode am I on?" Extending the table with `status` / `progress` on a live Postgres volume meant `create_all` alone wouldn't alter columns, so I added a small startup migrator that is careful on SQLite (tests) vs Postgres (Docker).
 
 5. **Making the UI feel alive without shipping piracy.**  
-   I studied the *layout energy* of dense anime catalog sites (poster grids, neon accents, continue-watching rows) and rebuilt Kura as a **legal local vault** with Manami/MAL-sourced metadata and covers — same vibe, clean data story.
+   I studied the *layout energy* of dense anime catalog sites (poster grids, neon accents, continue-watching rows) and rebuilt Kura as a **legal local vault** with Manami/MAL-sourced metadata and covers. Same vibe, clean data story.
 
 6. **Little landmines.**  
-   A missing `TYPES` constant blanked Discover after a refactor; `useEffectEvent` wasn't safe on the React version I pinned, so I ripped it out. Both were “one line” bugs that looked like total black screens until the console told the truth.
+   A missing `TYPES` constant blanked Discover after a refactor. `useEffectEvent` wasn't safe on the React version I pinned, so I ripped it out. Both were "one line" bugs that looked like total black screens until the console told the truth.
 
 ---
 
 ## What's next (if I keep iterating)
 
 - Import from MyAnimeList XML / AniList for your existing scores  
-- Smarter “next episode” reminders from progress + airing status  
+- Smarter "next episode" reminders from progress + airing status  
 - Offline-friendly poster cache so covers survive CDN hiccups  
 
 ---
@@ -215,4 +215,4 @@ Building this wasn't a straight line. A few problems that ate real evenings:
 
 Catalog metadata sourced from the community [Manami anime-offline-database](https://github.com/manami-project/anime-offline-database) (ODbL). Cover images are loaded from provider CDNs referenced by that dataset / MAL ids.
 
-Built by **Ayush Regmi** — [github.com/ayushreg](https://github.com/ayushreg)
+Built by **Ayush Regmi** ([github.com/ayushreg](https://github.com/ayushreg))
