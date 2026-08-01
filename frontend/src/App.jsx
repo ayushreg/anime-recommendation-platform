@@ -19,7 +19,58 @@ const GENRE_SHORTCUTS = [
   "Mystery",
 ];
 
-const TYPES = ["TV", "Movie", "OVA", "ONA", "Special"];
+const STATUS_LABELS = {
+  plan_to_watch: "Plan to watch",
+  watching: "Watching",
+  completed: "Completed",
+  on_hold: "On hold",
+  dropped: "Dropped",
+};
+
+function progressPct(entry) {
+  const total = entry?.anime?.episodes;
+  const prog = entry?.progress || 0;
+  if (!total || total <= 0) return 0;
+  return Math.min(100, Math.round((prog / total) * 100));
+}
+
+function ContinueCard({ entry, token, onTick }) {
+  const anime = entry.anime;
+  if (!anime) return null;
+  const total = anime.episodes || "?";
+  return (
+    <article className="watch-card">
+      <Link to={`/anime/${anime.id}`}>
+        {anime.image_url ? (
+          <img src={anime.image_url} alt="" />
+        ) : (
+          <img src="/poster-fallback.png" alt="" />
+        )}
+      </Link>
+      <div>
+        <h3>
+          <Link to={`/anime/${anime.id}`}>{anime.title}</Link>
+        </h3>
+        <p className="meta">
+          Ep {entry.progress || 0} / {total} · {STATUS_LABELS[entry.status] || entry.status}
+        </p>
+        <div className="progress-bar" aria-hidden>
+          <span style={{ width: `${progressPct(entry)}%` }} />
+        </div>
+      </div>
+      {token && (
+        <div className="watch-actions">
+          <button type="button" className="btn compact" onClick={() => onTick(anime.id)}>
+            +1 ep
+          </button>
+          <Link className="ghost-btn" to={`/anime/${anime.id}`}>
+            Open
+          </Link>
+        </div>
+      )}
+    </article>
+  );
+}
 
 function useDebounced(value, ms = 280) {
   const [v, setV] = useState(value);
@@ -154,6 +205,9 @@ function Shell({ children, searchSlot }) {
           <NavLink to="/" end>
             <Icon name="discover" /> Discover
           </NavLink>
+          <NavLink to="/watching">
+            <Icon name="watch" /> Watching
+          </NavLink>
           <NavLink to="/recommendations">
             <Icon name="foryou" /> For You
           </NavLink>
@@ -285,6 +339,7 @@ function Discover() {
   const [suggestions, setSuggestions] = useState([]);
   const [genres, setGenres] = useState(GENRE_SHORTCUTS);
   const [recent, setRecent] = useState([]);
+  const [continueWatching, setContinueWatching] = useState([]);
   const inputRef = useRef(null);
   const debouncedQ = useDebounced(q, 260);
 
@@ -298,6 +353,16 @@ function Discover() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!token) {
+      setContinueWatching([]);
+      return;
+    }
+    api("/api/library/continue?limit=6", { token })
+      .then(setContinueWatching)
+      .catch(() => setContinueWatching([]));
+  }, [token]);
 
   useEffect(() => {
     const g = params.get("genre") || "";
@@ -371,7 +436,22 @@ function Discover() {
   async function rate(animeId, score) {
     try {
       await api("/api/ratings", { method: "POST", token, body: { anime_id: animeId, score } });
-      setMessage(`Saved ${score}/10`);
+      setMessage(`Saved ${score}/10 · marked completed`);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function tickContinue(animeId) {
+    try {
+      const data = await api(`/api/library/${animeId}/tick`, { method: "POST", token });
+      setMessage(
+        data.status === "completed"
+          ? `Finished ${data.anime?.title || "title"}`
+          : `Now on ep ${data.progress}`
+      );
+      const rows = await api("/api/library/continue?limit=6", { token });
+      setContinueWatching(rows);
     } catch (err) {
       setMessage(err.message);
     }
@@ -484,6 +564,22 @@ function Discover() {
           </button>
         ))}
       </div>
+
+      {continueWatching.length > 0 && !q && !genre && !type && (
+        <section className="recent-rail">
+          <h2>Continue watching</h2>
+          <div className="continue-row">
+            {continueWatching.map((entry) => (
+              <ContinueCard
+                key={entry.anime_id}
+                entry={entry}
+                token={token}
+                onTick={tickContinue}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {recent.length > 0 && !q && !genre && !type && (
         <section className="recent-rail">
@@ -625,15 +721,15 @@ function Recommendations() {
   );
 }
 
-function Shelf() {
+function Watching() {
   const { token, user, loading } = useAuth();
-  const [items, setItems] = useState([]);
+  const [rows, setRows] = useState([]);
   const [message, setMessage] = useState("");
   const clearToast = useEffectEvent(() => setMessage(""));
 
   async function load() {
-    const data = await api("/api/watchlist", { token });
-    setItems(data);
+    const data = await api("/api/library?status=watching", { token });
+    setRows(data);
   }
 
   useEffect(() => {
@@ -643,10 +739,77 @@ function Shelf() {
   if (loading) return <Shell><p className="pad">Loading…</p></Shell>;
   if (!user) return <Navigate to="/login" replace />;
 
+  async function tick(animeId) {
+    const data = await api(`/api/library/${animeId}/tick`, { method: "POST", token });
+    setMessage(data.status === "completed" ? "Marked completed" : `Ep ${data.progress}`);
+    await load();
+  }
+
+  return (
+    <Shell>
+      <section className="panel-head">
+        <div>
+          <p className="eyebrow">Watching</p>
+          <h1>Currently watching</h1>
+          <p className="lede">
+            Tap +1 ep as you finish episodes. Hit the end and Kura auto-marks it completed.
+            Rating a title also completes it automatically.
+          </p>
+        </div>
+        <span className="head-meta">{rows.length} in progress</span>
+      </section>
+      {rows.length === 0 ? (
+        <EmptyState
+          title="Nothing in progress"
+          body="Open a title and hit Start watching, or +1 ep to begin auto-tracking."
+          action={<Link className="btn" to="/">Find something to watch</Link>}
+        />
+      ) : (
+        <div className="continue-row">
+          {rows.map((entry) => (
+            <ContinueCard key={entry.anime_id} entry={entry} token={token} onTick={tick} />
+          ))}
+        </div>
+      )}
+      <Toast message={message} onDone={clearToast} />
+    </Shell>
+  );
+}
+
+function Shelf() {
+  const { token, user, loading } = useAuth();
+  const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [message, setMessage] = useState("");
+  const clearToast = useEffectEvent(() => setMessage(""));
+
+  async function load() {
+    const path = filter === "all" ? "/api/library" : `/api/library?status=${filter}`;
+    const data = await api(path, { token });
+    setItems(data);
+  }
+
+  useEffect(() => {
+    if (token) load().catch((e) => setMessage(e.message));
+  }, [token, filter]);
+
+  if (loading) return <Shell><p className="pad">Loading…</p></Shell>;
+  if (!user) return <Navigate to="/login" replace />;
+
   async function remove(id) {
     await api(`/api/watchlist/${id}`, { method: "DELETE", token });
-    setItems((prev) => prev.filter((a) => a.id !== id));
+    setItems((prev) => prev.filter((a) => a.anime_id !== id));
     setMessage("Removed from shelf");
+  }
+
+  async function setStatus(id, status) {
+    await api(`/api/library/${id}`, {
+      method: "PUT",
+      token,
+      body: { status },
+    });
+    setMessage(`Moved to ${STATUS_LABELS[status] || status}`);
+    await load();
   }
 
   return (
@@ -654,38 +817,89 @@ function Shelf() {
       <section className="panel-head">
         <div>
           <p className="eyebrow">Shelf</p>
-          <h1>Watch later</h1>
-          <p className="lede">Your private queue — stored with your account on this machine.</p>
+          <h1>Your list</h1>
+          <p className="lede">Plan, watch, hold, drop, or finish — tracked on this machine with your account.</p>
         </div>
         <span className="head-meta">{items.length} titles</span>
       </section>
+      <div className="filter-row">
+        {["all", ...Object.keys(STATUS_LABELS)].map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`chip ${filter === key ? "active" : ""}`}
+            onClick={() => setFilter(key)}
+          >
+            {key === "all" ? "All" : STATUS_LABELS[key]}
+          </button>
+        ))}
+      </div>
       {items.length === 0 ? (
         <EmptyState
           title="Shelf is empty"
-          body="On any title page, tap Add to shelf to queue it here."
+          body="On any title page, add to shelf or start watching to queue it here."
           action={<Link className="btn" to="/">Browse catalog</Link>}
         />
       ) : (
-        <section className="tile-grid">
-          {items.map((anime) => (
-            <article className="tile" key={anime.id}>
-              <Link to={`/anime/${anime.id}`} className="tile-poster">
-                {anime.image_url ? (
-                  <img src={anime.image_url} alt="" />
+        <div className="continue-row">
+          {items.map((entry) => (
+            <article className="watch-card" key={entry.anime_id}>
+              <Link to={`/anime/${entry.anime_id}`}>
+                {entry.anime?.image_url ? (
+                  <img src={entry.anime.image_url} alt="" />
                 ) : (
-                  <div className="poster-fallback"><span>{anime.title.slice(0, 1)}</span></div>
+                  <img src="/poster-fallback.png" alt="" />
                 )}
               </Link>
-              <div className="tile-body">
-                <h3><Link to={`/anime/${anime.id}`}>{anime.title}</Link></h3>
-                <p className="meta">{[anime.type, anime.year].filter(Boolean).join(" · ")}</p>
-                <button type="button" className="ghost-btn danger" onClick={() => remove(anime.id)}>
+              <div>
+                <h3>
+                  <Link to={`/anime/${entry.anime_id}`}>{entry.anime?.title}</Link>
+                </h3>
+                <p className="meta">
+                  {STATUS_LABELS[entry.status] || entry.status}
+                  {entry.anime?.episodes
+                    ? ` · Ep ${entry.progress || 0}/${entry.anime.episodes}`
+                    : entry.progress
+                      ? ` · Ep ${entry.progress}`
+                      : ""}
+                </p>
+                <div className="progress-bar" aria-hidden>
+                  <span style={{ width: `${progressPct(entry)}%` }} />
+                </div>
+                <label className="sort-label" style={{ marginTop: "0.55rem" }}>
+                  Status
+                  <select
+                    className="status-select"
+                    value={entry.status}
+                    onChange={(e) => setStatus(entry.anime_id, e.target.value)}
+                  >
+                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="watch-actions">
+                {entry.status === "watching" && (
+                  <button
+                    type="button"
+                    className="btn compact"
+                    onClick={() =>
+                      api(`/api/library/${entry.anime_id}/tick`, { method: "POST", token }).then(load)
+                    }
+                  >
+                    +1 ep
+                  </button>
+                )}
+                <button type="button" className="ghost-btn danger" onClick={() => remove(entry.anime_id)}>
                   Remove
                 </button>
               </div>
             </article>
           ))}
-        </section>
+        </div>
       )}
       <Toast message={message} onDone={clearToast} />
     </Shell>
@@ -752,8 +966,14 @@ function Detail() {
   const [similar, setSimilar] = useState([]);
   const [message, setMessage] = useState("");
   const [myScore, setMyScore] = useState(null);
-  const [onShelf, setOnShelf] = useState(false);
+  const [entry, setEntry] = useState(null);
   const clearToast = useEffectEvent(() => setMessage(""));
+
+  async function refreshLibrary() {
+    if (!token) return;
+    const rows = await api("/api/library", { token });
+    setEntry(rows.find((r) => r.anime_id === Number(id)) || null);
+  }
 
   useEffect(() => {
     api(`/api/anime/${id}`)
@@ -766,16 +986,18 @@ function Detail() {
   }, [id]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setEntry(null);
+      setMyScore(null);
+      return;
+    }
     api("/api/ratings/me", { token })
       .then((rows) => {
         const hit = rows.find((r) => r.anime_id === Number(id));
         setMyScore(hit?.score ?? null);
       })
       .catch(() => {});
-    api("/api/watchlist", { token })
-      .then((rows) => setOnShelf(rows.some((a) => a.id === Number(id))))
-      .catch(() => {});
+    refreshLibrary().catch(() => {});
   }, [token, id]);
 
   async function rate(score) {
@@ -789,7 +1011,41 @@ function Detail() {
       body: { anime_id: Number(id), score },
     });
     setMyScore(score);
-    setMessage(`Rated ${score}/10`);
+    setMessage(`Rated ${score}/10 · auto-marked completed`);
+    await refreshLibrary();
+  }
+
+  async function setStatus(status) {
+    if (!token) {
+      setMessage("Sign in to track watching");
+      return;
+    }
+    const data = await api(`/api/library/${id}`, {
+      method: "PUT",
+      token,
+      body: { status, progress: entry?.progress ?? 0 },
+    });
+    setEntry(data);
+    setMessage(`Status: ${STATUS_LABELS[data.status] || data.status}`);
+  }
+
+  async function tick() {
+    if (!token) {
+      setMessage("Sign in to track episodes");
+      return;
+    }
+    const data = await api(`/api/library/${id}/tick`, { method: "POST", token });
+    setEntry({
+      anime_id: data.anime_id,
+      status: data.status,
+      progress: data.progress,
+      anime: data.anime,
+    });
+    setMessage(
+      data.status === "completed"
+        ? "Finished — marked completed"
+        : `Now on episode ${data.progress}`
+    );
   }
 
   async function toggleShelf() {
@@ -797,14 +1053,12 @@ function Detail() {
       setMessage("Sign in to use your shelf");
       return;
     }
-    if (onShelf) {
+    if (entry) {
       await api(`/api/watchlist/${id}`, { method: "DELETE", token });
-      setOnShelf(false);
+      setEntry(null);
       setMessage("Removed from shelf");
     } else {
-      await api(`/api/watchlist/${id}`, { method: "POST", token });
-      setOnShelf(true);
-      setMessage("Added to shelf");
+      await setStatus("plan_to_watch");
     }
   }
 
@@ -859,9 +1113,20 @@ function Detail() {
           </div>
           <p className="synopsis">{anime.synopsis}</p>
           <div className="actions">
-            <button type="button" className="btn" onClick={toggleShelf}>
-              <Icon name={onShelf ? "check" : "plus"} size={16} />
-              {onShelf ? "On shelf" : "Add to shelf"}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setStatus(entry?.status === "watching" ? "on_hold" : "watching")}
+            >
+              <Icon name="watch" size={16} />
+              {entry?.status === "watching" ? "Pause watching" : "Start watching"}
+            </button>
+            <button type="button" className="btn ghost-neon" onClick={tick}>
+              +1 episode
+            </button>
+            <button type="button" className="ghost-btn" onClick={toggleShelf}>
+              <Icon name={entry ? "check" : "plus"} size={16} />
+              {entry ? "On shelf" : "Add to shelf"}
             </button>
             {anime.score != null && (
               <span className="score-pill">
@@ -872,8 +1137,45 @@ function Detail() {
               <span className="score-pill you">Your score <strong>{myScore}</strong></span>
             )}
           </div>
+          {entry && (
+            <div className="rate-panel">
+              <span>
+                Tracking · {STATUS_LABELS[entry.status] || entry.status}
+                {anime.episodes
+                  ? ` · Ep ${entry.progress || 0}/${anime.episodes}`
+                  : entry.progress
+                    ? ` · Ep ${entry.progress}`
+                    : ""}
+              </span>
+              <div className="progress-bar" aria-hidden>
+                <span
+                  style={{
+                    width: `${
+                      anime.episodes
+                        ? Math.min(100, Math.round(((entry.progress || 0) / anime.episodes) * 100))
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <label className="sort-label">
+                Status
+                <select
+                  className="status-select"
+                  value={entry.status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           <div className="rate-panel">
-            <span>Rate</span>
+            <span>Rate (auto-completes)</span>
             <div className="rate-strip large">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => (
                 <button
@@ -977,6 +1279,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Discover />} />
+      <Route path="/watching" element={<Watching />} />
       <Route path="/recommendations" element={<Recommendations />} />
       <Route path="/shelf" element={<Shelf />} />
       <Route path="/library" element={<Library />} />

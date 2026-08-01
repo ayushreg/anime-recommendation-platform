@@ -6,6 +6,7 @@ from sqlalchemy import func
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.middleware.rate_limit import RedisRateLimitMiddleware
+from app.migrate import ensure_schema
 from app.models import Anime, Rating, User
 from app.routers import anime, auth, recs
 from app.schemas import StatsOut
@@ -14,6 +15,7 @@ from app.services.embeddings import embedding_index
 from app.services.recommender import recommender
 
 Base.metadata.create_all(bind=engine)
+ensure_schema(engine)
 
 app = FastAPI(
     title="Anime Recommendation Platform",

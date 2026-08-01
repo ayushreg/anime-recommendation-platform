@@ -63,6 +63,12 @@ class WatchlistItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     anime_id: Mapped[int] = mapped_column(ForeignKey("anime.id", ondelete="CASCADE"), index=True)
+    # plan_to_watch | watching | completed | on_hold | dropped
+    status: Mapped[str] = mapped_column(String(32), default="plan_to_watch", index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)  # episodes watched
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="watchlist")

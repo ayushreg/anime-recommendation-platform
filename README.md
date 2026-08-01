@@ -70,13 +70,16 @@ Stop with `Ctrl+C` or `docker compose down`. Reset the database with `docker com
 
 Local-first app shell (not a marketing landing page):
 
-- **Discover** — command search with autocomplete, hybrid / lexical / semantic modes, genre chips, type filters, recently opened titles
+- **Discover** — command search with autocomplete, hybrid / lexical / semantic modes, genre chips, type filters, recently opened titles, **Continue watching**
+- **Watching** — currently-watching queue with **+1 episode** progress bars; auto-completes when you finish
 - **For You** — hybrid personalized recommendations (content + collaborative)
-- **Shelf** — watch-later queue (add / remove)
+- **Shelf** — full list with statuses (plan / watching / completed / on hold / dropped)
 - **Library** — your ratings, sortable
-- **Title pages** — synopsis, full 1–10 rating dial, similar titles, shelf toggle
+- **Title pages** — start watching, episode tick, status picker, rating (auto-marks completed), similar titles
 
 Press `/` anywhere to focus search.
+
+**Auto-tracking:** rating a title marks it completed; tapping **+1 episode** starts/continues Watching and completes when you hit the episode count.
 
 ---
 

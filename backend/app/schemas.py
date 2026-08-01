@@ -102,3 +102,35 @@ class StatsOut(BaseModel):
     user_count: int
     rating_count: int
     cache_backend: str
+
+
+WATCH_STATUSES = ("plan_to_watch", "watching", "completed", "on_hold", "dropped")
+
+
+class LibraryEntryIn(BaseModel):
+    status: str = Field(default="plan_to_watch")
+    progress: int | None = Field(default=None, ge=0, le=5000)
+
+    def normalized_status(self) -> str:
+        status = (self.status or "plan_to_watch").strip().lower().replace(" ", "_")
+        if status not in WATCH_STATUSES:
+            raise ValueError(f"status must be one of {WATCH_STATUSES}")
+        return status
+
+
+class LibraryEntryOut(BaseModel):
+    anime_id: int
+    status: str
+    progress: int
+    updated_at: datetime | None = None
+    created_at: datetime | None = None
+    anime: AnimeOut | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ProgressBumpOut(BaseModel):
+    anime_id: int
+    status: str
+    progress: int
+    anime: AnimeOut | None = None
