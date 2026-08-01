@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import require_user
@@ -85,6 +85,23 @@ def add_watchlist(
         db.add(WatchlistItem(user_id=user.id, anime_id=anime_id))
         db.commit()
     return anime
+
+
+@router.delete("/watchlist/{anime_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_watchlist(
+    anime_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    existing = (
+        db.query(WatchlistItem)
+        .filter(WatchlistItem.user_id == user.id, WatchlistItem.anime_id == anime_id)
+        .first()
+    )
+    if existing:
+        db.delete(existing)
+        db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/watchlist", response_model=list[AnimeOut])

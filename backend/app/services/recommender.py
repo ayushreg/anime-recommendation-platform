@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models import Anime, Rating
@@ -68,16 +69,49 @@ class HybridRecommender:
         if not self._ready:
             self.fit(db)
 
-    def search(self, db: Session, query: str, limit: int = 24) -> list[Anime]:
+    def _lexical_search(self, db: Session, query: str, limit: int) -> list[Anime]:
+        """Multi-token ILIKE fallback across title, English title, genres, themes, synopsis."""
+        tokens = [t for t in query.strip().split() if len(t) >= 2]
+        clauses = []
+        for token in tokens:
+            pattern = f"%{token}%"
+            clauses.append(
+                or_(
+                    Anime.title.ilike(pattern),
+                    Anime.title_english.ilike(pattern),
+                    Anime.genres.ilike(pattern),
+                    Anime.themes.ilike(pattern),
+                    Anime.synopsis.ilike(pattern),
+                )
+            )
+        full_pattern = f"%{query.strip()}%"
+        full_match = or_(
+            Anime.title.ilike(full_pattern),
+            Anime.title_english.ilike(full_pattern),
+        )
+        if clauses:
+            filt = or_(full_match, and_(*clauses))
+        else:
+            filt = full_match
+        return (
+            db.query(Anime)
+            .filter(filt)
+            .order_by(Anime.score.desc().nullslast())
+            .limit(limit)
+            .all()
+        )
+
+    def search(self, db: Session, query: str, limit: int = 24, *, lexical_only: bool = False) -> list[Anime]:
         self.ensure_fit(db)
-        cache_key = f"search:{query.lower().strip()}:{limit}"
+        # Bust stale caches when catalog grows (e.g. demo title backfill).
+        cache_key = f"search:v2:{query.lower().strip()}:{limit}:{int(lexical_only)}"
         cached = cache_get(cache_key)
         if cached:
             ids = cached
             by_id = {a.id: a for a in db.query(Anime).filter(Anime.id.in_(ids)).all()}
             return [by_id[i] for i in ids if i in by_id]
 
-        if not self._ready or not query.strip():
+        if not query.strip():
             rows = (
                 db.query(Anime)
                 .order_by(Anime.score.desc().nullslast(), Anime.popularity.desc())
@@ -86,23 +120,37 @@ class HybridRecommender:
             )
             return rows
 
+        lexical = self._lexical_search(db, query, limit=limit)
+        if lexical_only or not self._ready:
+            if lexical:
+                cache_set(cache_key, [a.id for a in lexical])
+            return lexical
+
         q = self._vectorizer.transform([query])
         sims = cosine_similarity(q, self._matrix).ravel()
-        top_idx = np.argsort(-sims)[:limit]
-        ids = [self._anime_ids[i] for i in top_idx if sims[i] > 0]
-        if not ids:
-            rows = (
-                db.query(Anime)
-                .filter(Anime.title.ilike(f"%{query}%"))
-                .order_by(Anime.score.desc().nullslast())
-                .limit(limit)
-                .all()
-            )
-            return rows
+        # Require a meaningful similarity so weak OOV matches don't drown titles.
+        top_idx = np.argsort(-sims)[: limit * 2]
+        tfidf_ids = [self._anime_ids[i] for i in top_idx if sims[i] > 0.08]
 
-        by_id = {a.id: a for a in db.query(Anime).filter(Anime.id.in_(ids)).all()}
-        ordered = [by_id[i] for i in ids if i in by_id]
-        cache_set(cache_key, [a.id for a in ordered])
+        # Prefer lexical (exact/token title hits), then fill with TF-IDF.
+        seen: set[int] = set()
+        ordered: list[Anime] = []
+        for anime in lexical:
+            if anime.id not in seen:
+                ordered.append(anime)
+                seen.add(anime.id)
+        if tfidf_ids:
+            by_id = {a.id: a for a in db.query(Anime).filter(Anime.id.in_(tfidf_ids)).all()}
+            for aid in tfidf_ids:
+                if aid not in seen and aid in by_id:
+                    ordered.append(by_id[aid])
+                    seen.add(aid)
+                if len(ordered) >= limit:
+                    break
+
+        ordered = ordered[:limit]
+        if ordered:
+            cache_set(cache_key, [a.id for a in ordered])
         return ordered
 
     def recommend_for_user(self, db: Session, user_id: int, limit: int = 12) -> tuple[list[ScoredAnime], bool]:

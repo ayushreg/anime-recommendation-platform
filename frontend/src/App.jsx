@@ -1,86 +1,98 @@
-import React, { useEffect, useState } from "react";
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import React, { useEffect, useEffectEvent, useRef, useState } from "react";
+import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
+import { Icon } from "./icons";
 
-function Shell({ children }) {
-  const { user, logout } = useAuth();
-  const [stats, setStats] = useState(null);
+const GENRE_SHORTCUTS = [
+  "Action",
+  "Adventure",
+  "Comedy",
+  "Drama",
+  "Fantasy",
+  "Romance",
+  "Sci-Fi",
+  "Slice of Life",
+  "Sports",
+  "Supernatural",
+  "Mecha",
+  "Mystery",
+];
 
+const TYPES = ["TV", "Movie", "OVA", "ONA", "Special"];
+
+function useDebounced(value, ms = 280) {
+  const [v, setV] = useState(value);
   useEffect(() => {
-    api("/api/stats").then(setStats).catch(() => {});
-  }, []);
-
-  return (
-    <div className="page">
-      <header className="topbar">
-        <Link to="/" className="brand">
-          <span className="brand-mark">AR</span>
-          <span>
-            AnimeRecs
-            <small>hybrid ranking engine</small>
-          </span>
-        </Link>
-        <nav>
-          <Link to="/">Discover</Link>
-          <Link to="/recommendations">For You</Link>
-          {user ? (
-            <>
-              <span className="user-chip">{user.username}</span>
-              <button type="button" className="ghost" onClick={logout}>
-                Log out
-              </button>
-            </>
-          ) : (
-            <Link className="btn" to="/login">
-              Sign in
-            </Link>
-          )}
-        </nav>
-      </header>
-      {stats && (
-        <div className="stats-strip">
-          <span>
-            <strong>{stats.anime_count.toLocaleString()}</strong> titles indexed
-          </span>
-          <span>
-            <strong>{stats.rating_count.toLocaleString()}</strong> ratings
-          </span>
-          <span>
-            cache: <strong>{stats.cache_backend}</strong>
-          </span>
-        </div>
-      )}
-      <main>{children}</main>
-    </div>
-  );
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
 }
 
-function AnimeCard({ anime, onRate, token }) {
+function rememberRecent(anime) {
+  try {
+    const key = "kura_recent";
+    const prev = JSON.parse(localStorage.getItem(key) || "[]");
+    const next = [{ id: anime.id, title: anime.title, image_url: anime.image_url }, ...prev.filter((x) => x.id !== anime.id)].slice(0, 12);
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readRecent() {
+  try {
+    return JSON.parse(localStorage.getItem("kura_recent") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function ScoreBadge({ score }) {
+  if (score == null) return null;
+  return <span className="score-badge">{Number(score).toFixed(1)}</span>;
+}
+
+function AnimeCard({ anime, token, onRate, reason, method, userScore }) {
   return (
-    <article className="card">
-      <Link to={`/anime/${anime.id}`} className="poster">
+    <article className="tile">
+      <Link
+        to={`/anime/${anime.id}`}
+        className="tile-poster"
+        onClick={() => rememberRecent(anime)}
+      >
         {anime.image_url ? (
-          <img src={anime.image_url} alt={anime.title} loading="lazy" />
+          <img src={anime.image_url} alt="" loading="lazy" />
         ) : (
-          <div className="poster-fallback">{anime.title.slice(0, 1)}</div>
+          <div className="poster-fallback" data-letter={anime.title.slice(0, 1)}>
+            <span>{anime.title.slice(0, 1)}</span>
+          </div>
         )}
+        <ScoreBadge score={anime.score} />
+        {userScore != null && <span className="you-rated">You · {userScore}</span>}
       </Link>
-      <div className="card-body">
+      <div className="tile-body">
         <h3>
-          <Link to={`/anime/${anime.id}`}>{anime.title}</Link>
+          <Link to={`/anime/${anime.id}`} onClick={() => rememberRecent(anime)}>
+            {anime.title}
+          </Link>
         </h3>
         <p className="meta">
-          {[anime.type, anime.year, anime.score ? `★ ${anime.score}` : null]
-            .filter(Boolean)
-            .join(" · ")}
+          {[anime.type, anime.year].filter(Boolean).join(" · ")}
         </p>
-        <p className="genres">{anime.genres || "General"}</p>
-        {token && (
-          <div className="rate-row">
-            {[7, 8, 9, 10].map((score) => (
-              <button key={score} type="button" onClick={() => onRate(anime.id, score)}>
-                {score}
+        {(reason || method) && (
+          <p className="reason">
+            {method && <span className="method-tag">{method}</span>}
+            {reason}
+          </p>
+        )}
+        {!reason && <p className="genres">{(anime.genres || "").split(",").slice(0, 3).join(" · ")}</p>}
+        {token && onRate && (
+          <div className="rate-strip" role="group" aria-label={`Rate ${anime.title}`}>
+            {[6, 7, 8, 9, 10].map((s) => (
+              <button key={s} type="button" onClick={() => onRate(anime.id, s)} title={`Rate ${s}/10`}>
+                {s}
               </button>
             ))}
           </div>
@@ -90,76 +102,402 @@ function AnimeCard({ anime, onRate, token }) {
   );
 }
 
-function Home() {
-  const { token } = useAuth();
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+function EmptyState({ icon = "search", title, body, action }) {
+  return (
+    <div className="empty">
+      <Icon name={icon} size={36} />
+      <h2>{title}</h2>
+      <p>{body}</p>
+      {action}
+    </div>
+  );
+}
 
-  async function load(query = "") {
+function Toast({ message, onDone }) {
+  useEffect(() => {
+    if (!message) return undefined;
+    const t = setTimeout(onDone, 2600);
+    return () => clearTimeout(t);
+  }, [message, onDone]);
+  if (!message) return null;
+  return <div className="toast-float" role="status">{message}</div>;
+}
+
+function Shell({ children, searchSlot }) {
+  const { user, logout } = useAuth();
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    api("/api/stats").then(setStats).catch(() => {});
+  }, []);
+
+  return (
+    <div className="app-shell">
+      <aside className="rail" aria-label="Primary">
+        <Link to="/" className="brand">
+          <img src="/logo.png" alt="" className="brand-logo" />
+          <span>
+            <strong>Kura</strong>
+            <small>local vault</small>
+          </span>
+        </Link>
+
+        <nav className="rail-nav">
+          <NavLink to="/" end>
+            <Icon name="discover" /> Discover
+          </NavLink>
+          <NavLink to="/recommendations">
+            <Icon name="foryou" /> For You
+          </NavLink>
+          <NavLink to="/shelf">
+            <Icon name="shelf" /> Shelf
+          </NavLink>
+          <NavLink to="/library">
+            <Icon name="ratings" /> Library
+          </NavLink>
+        </nav>
+
+        <div className="rail-foot">
+          {stats && (
+            <div className="vault-meter" title="Catalog health">
+              <div className="meter-label">
+                <Icon name="local" size={14} /> Vault
+              </div>
+              <div className="meter-bars" aria-hidden>
+                {[0.55, 0.8, 0.45, 0.95, 0.7].map((h, i) => (
+                  <span key={i} style={{ "--h": h }} />
+                ))}
+              </div>
+              <p>
+                <strong>{stats.anime_count.toLocaleString()}</strong> titles ·{" "}
+                <strong>{stats.rating_count.toLocaleString()}</strong> ratings
+              </p>
+            </div>
+          )}
+          {user ? (
+            <div className="rail-user">
+              <Icon name="user" size={16} />
+              <span>{user.username}</span>
+              <button type="button" className="icon-btn" onClick={logout} aria-label="Log out">
+                <Icon name="logout" size={16} />
+              </button>
+            </div>
+          ) : (
+            <Link className="btn block" to="/login">
+              Sign in
+            </Link>
+          )}
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <header className="workspace-bar">
+          {searchSlot || <div />}
+          <div className="bar-hint">
+            <kbd>/</kbd> search
+          </div>
+        </header>
+        <main className="workspace-main">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+function SearchBar({ q, setQ, onSubmit, mode, setMode, suggestions, onPick, busy, inputRef }) {
+  return (
+    <form
+      className="command-search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+      role="search"
+    >
+      <Icon name="search" size={18} />
+      <input
+        ref={inputRef}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search titles, genres, vibes…"
+        aria-label="Search anime"
+        autoComplete="off"
+      />
+      <select
+        value={mode}
+        onChange={(e) => setMode(e.target.value)}
+        aria-label="Search mode"
+        className="mode-select"
+      >
+        <option value="hybrid">Hybrid</option>
+        <option value="lexical">Lexical</option>
+        <option value="semantic">Semantic</option>
+      </select>
+      <button type="submit" className="btn compact" disabled={busy}>
+        {busy ? "…" : "Go"}
+      </button>
+      {suggestions?.length > 0 && (
+        <ul className="suggest-panel">
+          {suggestions.map((s) => (
+            <li key={s.id}>
+              <button type="button" onClick={() => onPick(s)}>
+                <span>{s.title}</span>
+                <small>{[s.type, s.year].filter(Boolean).join(" · ")}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </form>
+  );
+}
+
+function Discover() {
+  const { token } = useAuth();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const [q, setQ] = useState(params.get("q") || "");
+  const [mode, setMode] = useState("hybrid");
+  const [genre, setGenre] = useState(params.get("genre") || "");
+  const [type, setType] = useState(params.get("type") || "");
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [busy, setBusy] = useState(true);
+  const [booted, setBooted] = useState(false);
+  const [message, setMessage] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [genres, setGenres] = useState(GENRE_SHORTCUTS);
+  const [recent, setRecent] = useState([]);
+  const inputRef = useRef(null);
+  const debouncedQ = useDebounced(q, 260);
+
+  const clearToast = useEffectEvent(() => setMessage(""));
+
+  useEffect(() => {
+    setRecent(readRecent());
+    api("/api/anime/genres")
+      .then((d) => {
+        if (d.genres?.length) setGenres(d.genres.slice(0, 16));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const g = params.get("genre") || "";
+    const t = params.get("type") || "";
+    const query = params.get("q") || "";
+    setGenre(g);
+    setType(t);
+    setQ(query);
+    load({ query, g, t, p: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, mode]);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "/" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!debouncedQ.trim() || debouncedQ.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    api(`/api/anime/suggest?q=${encodeURIComponent(debouncedQ.trim())}`)
+      .then((d) => setSuggestions(d.items || []))
+      .catch(() => setSuggestions([]));
+  }, [debouncedQ]);
+
+  async function load({ query = q, g = genre, t = type, p = 1, append = false } = {}) {
     setBusy(true);
     try {
-      const data = await api(`/api/anime/search?q=${encodeURIComponent(query)}&limit=24`);
-      setItems(data.items);
+      let data;
+      if (g || t) {
+        const browseParams = new URLSearchParams({ page: String(p), page_size: "24" });
+        if (g) browseParams.set("genre", g);
+        if (t) browseParams.set("type", t);
+        data = await api(`/api/anime/browse?${browseParams}`);
+      } else {
+        data = await api(
+          `/api/anime/search?q=${encodeURIComponent(query)}&limit=24&mode=${encodeURIComponent(mode)}`
+        );
+      }
+      setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+      setTotal(data.total);
+      setPage(p);
+      setBooted(true);
+      if (!append && data.items.length === 0 && query.trim()) {
+        setMessage(`No matches for “${query.trim()}”. Try a genre chip or shorter keywords.`);
+      }
     } catch (err) {
       setMessage(err.message);
+      setBooted(true);
     } finally {
       setBusy(false);
     }
   }
 
-  useEffect(() => {
-    load("");
-  }, []);
+  function syncParams({ query = "", g = "", t = "" } = {}) {
+    const next = new URLSearchParams();
+    if (query.trim()) next.set("q", query.trim());
+    if (g) next.set("genre", g);
+    if (t) next.set("type", t);
+    setParams(next, { replace: true });
+  }
 
   async function rate(animeId, score) {
     try {
-      await api("/api/ratings", {
-        method: "POST",
-        token,
-        body: { anime_id: animeId, score },
-      });
-      setMessage(`Saved rating ${score}/10`);
+      await api("/api/ratings", { method: "POST", token, body: { anime_id: animeId, score } });
+      setMessage(`Saved ${score}/10`);
     } catch (err) {
       setMessage(err.message);
     }
   }
 
+  const heading = genre
+    ? `${genre} shelf`
+    : type
+      ? `${type} titles`
+      : q.trim()
+        ? `Results for “${q.trim()}”`
+        : "Top of the vault";
+
   return (
-    <Shell>
-      <section className="hero">
-        <h1>
-          Find your next watch across{" "}
-          <em>thousands</em> of titles
-        </h1>
-        <p>
-          Search uses TF-IDF + cosine similarity. Personalized picks blend content signals with
-          collaborative filtering, cached in Redis for speed.
-        </p>
-        <form
-          className="search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            load(q);
+    <Shell
+      searchSlot={
+        <SearchBar
+          q={q}
+          setQ={setQ}
+          mode={mode}
+          setMode={setMode}
+          busy={busy}
+          inputRef={inputRef}
+          suggestions={suggestions}
+          onSubmit={() => {
+            setSuggestions([]);
+            syncParams({ query: q, g: "", t: "" });
           }}
+          onPick={(s) => {
+            setSuggestions([]);
+            setQ(s.title);
+            navigate(`/anime/${s.id}`);
+          }}
+        />
+      }
+    >
+      <section className="panel-head">
+        <div>
+          <p className="eyebrow">Discover</p>
+          <h1>{heading}</h1>
+          <p className="lede">
+            Browse your local catalog. Rate what you finish so For You can learn your taste.
+          </p>
+        </div>
+        <div className="head-meta">
+          {busy ? "Searching…" : `${total.toLocaleString()} matches`}
+        </div>
+      </section>
+
+      <div className="filter-row">
+        <button
+          type="button"
+          className={`chip ${!genre && !type && !q ? "active" : ""}`}
+          onClick={() => syncParams({})}
         >
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Try mecha, romance school, space adventure..."
-          />
-          <button type="submit" disabled={busy}>
-            {busy ? "Searching..." : "Search"}
+          All
+        </button>
+        {genres.map((g) => (
+          <button
+            key={g}
+            type="button"
+            className={`chip ${genre === g ? "active" : ""}`}
+            onClick={() => syncParams({ g, t: type })}
+          >
+            {g}
           </button>
-        </form>
-        {message && <p className="toast">{message}</p>}
-      </section>
-      <section className="grid">
-        {items.map((anime) => (
-          <AnimeCard key={anime.id} anime={anime} token={token} onRate={rate} />
         ))}
-      </section>
+      </div>
+
+      <div className="filter-row slim">
+        <Icon name="filter" size={14} />
+        {TYPES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            className={`chip ghost ${type === t ? "active" : ""}`}
+            onClick={() => syncParams({ g: genre, t: type === t ? "" : t })}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {recent.length > 0 && !q && !genre && !type && (
+        <section className="recent-rail">
+          <h2>Recently opened</h2>
+          <div className="recent-row">
+            {recent.map((r) => (
+              <Link key={r.id} to={`/anime/${r.id}`} className="recent-pill">
+                {r.image_url ? <img src={r.image_url} alt="" /> : <span>{r.title.slice(0, 1)}</span>}
+                <em>{r.title}</em>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {busy && !booted ? (
+        <p className="pad">Loading vault…</p>
+      ) : items.length === 0 && !busy ? (
+        <EmptyState
+          icon="search"
+          title="Nothing on this shelf"
+          body="Try another spelling, a single keyword, or pick a genre chip above."
+          action={
+            <button type="button" className="btn" onClick={() => syncParams({})}>
+              Reset filters
+            </button>
+          }
+        />
+      ) : (
+        <section className="tile-grid">
+          {items.map((anime) => (
+            <AnimeCard key={anime.id} anime={anime} token={token} onRate={rate} />
+          ))}
+        </section>
+      )}
+
+      {genre || type ? (
+        <div className="pager">
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={page <= 1 || busy}
+            onClick={() => load({ g: genre, t: type, p: page - 1 })}
+          >
+            Previous
+          </button>
+          <span>
+            Page {page}
+          </span>
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={busy || items.length < 24}
+            onClick={() => load({ g: genre, t: type, p: page + 1 })}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
+
+      <Toast message={message} onDone={clearToast} />
     </Shell>
   );
 }
@@ -169,50 +507,197 @@ function Recommendations() {
   const [rows, setRows] = useState([]);
   const [cached, setCached] = useState(false);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function refresh() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const data = await api("/api/recommendations?limit=24", { token });
+      setRows(data.recommendations);
+      setCached(data.cached);
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
-    if (!token) return;
-    api("/api/recommendations?limit=12", { token })
-      .then((data) => {
-        setRows(data.recommendations);
-        setCached(data.cached);
-      })
-      .catch((err) => setError(err.message));
+    refresh();
   }, [token]);
 
-  if (loading) return <Shell><p className="pad">Loading...</p></Shell>;
+  if (loading) {
+    return (
+      <Shell>
+        <p className="pad">Loading your vault…</p>
+      </Shell>
+    );
+  }
   if (!user) return <Navigate to="/login" replace />;
 
   return (
     <Shell>
-      <section className="hero compact">
-        <h1>For you</h1>
-        <p>
-          Hybrid recommendations for <strong>{user.username}</strong>
-          {cached ? " · served from Redis cache" : " · freshly computed"}
-        </p>
-        {error && <p className="toast">{error}</p>}
+      <section className="panel-head">
+        <div>
+          <p className="eyebrow">For You</p>
+          <h1>Picks for {user.username}</h1>
+          <p className="lede">
+            Hybrid ranking blends shows like ones you rated with neighbors who share your taste
+            {cached ? " · Redis cache hit" : " · freshly scored"}.
+          </p>
+        </div>
+        <button type="button" className="btn" onClick={refresh} disabled={busy}>
+          <Icon name="spark" size={16} /> Refresh
+        </button>
       </section>
-      <section className="grid">
-        {rows.map((row) => (
-          <article className="card" key={row.anime.id}>
-            <Link to={`/anime/${row.anime.id}`} className="poster">
-              {row.anime.image_url ? (
-                <img src={row.anime.image_url} alt={row.anime.title} />
-              ) : (
-                <div className="poster-fallback">{row.anime.title.slice(0, 1)}</div>
-              )}
+      {error && <p className="toast">{error}</p>}
+      {rows.length === 0 ? (
+        <EmptyState
+          icon="foryou"
+          title="Rate a few titles first"
+          body="Open Discover, score shows you like (7+), then come back for personalized picks."
+          action={
+            <Link className="btn" to="/">
+              Go discover
             </Link>
-            <div className="card-body">
-              <h3>
-                <Link to={`/anime/${row.anime.id}`}>{row.anime.title}</Link>
-              </h3>
-              <p className="meta">{row.method} · score {row.score}</p>
-              <p className="genres">{row.reason}</p>
-            </div>
-          </article>
-        ))}
+          }
+        />
+      ) : (
+        <section className="tile-grid">
+          {rows.map((row) => (
+            <AnimeCard
+              key={row.anime.id}
+              anime={row.anime}
+              reason={row.reason}
+              method={row.method}
+            />
+          ))}
+        </section>
+      )}
+    </Shell>
+  );
+}
+
+function Shelf() {
+  const { token, user, loading } = useAuth();
+  const [items, setItems] = useState([]);
+  const [message, setMessage] = useState("");
+  const clearToast = useEffectEvent(() => setMessage(""));
+
+  async function load() {
+    const data = await api("/api/watchlist", { token });
+    setItems(data);
+  }
+
+  useEffect(() => {
+    if (token) load().catch((e) => setMessage(e.message));
+  }, [token]);
+
+  if (loading) return <Shell><p className="pad">Loading…</p></Shell>;
+  if (!user) return <Navigate to="/login" replace />;
+
+  async function remove(id) {
+    await api(`/api/watchlist/${id}`, { method: "DELETE", token });
+    setItems((prev) => prev.filter((a) => a.id !== id));
+    setMessage("Removed from shelf");
+  }
+
+  return (
+    <Shell>
+      <section className="panel-head">
+        <div>
+          <p className="eyebrow">Shelf</p>
+          <h1>Watch later</h1>
+          <p className="lede">Your private queue — stored with your account on this machine.</p>
+        </div>
+        <span className="head-meta">{items.length} titles</span>
       </section>
+      {items.length === 0 ? (
+        <EmptyState
+          icon="shelf"
+          title="Shelf is empty"
+          body="On any title page, tap Add to shelf to queue it here."
+          action={<Link className="btn" to="/">Browse catalog</Link>}
+        />
+      ) : (
+        <section className="tile-grid">
+          {items.map((anime) => (
+            <article className="tile" key={anime.id}>
+              <Link to={`/anime/${anime.id}`} className="tile-poster">
+                {anime.image_url ? (
+                  <img src={anime.image_url} alt="" />
+                ) : (
+                  <div className="poster-fallback"><span>{anime.title.slice(0, 1)}</span></div>
+                )}
+              </Link>
+              <div className="tile-body">
+                <h3><Link to={`/anime/${anime.id}`}>{anime.title}</Link></h3>
+                <p className="meta">{[anime.type, anime.year].filter(Boolean).join(" · ")}</p>
+                <button type="button" className="ghost-btn danger" onClick={() => remove(anime.id)}>
+                  Remove
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+      <Toast message={message} onDone={clearToast} />
+    </Shell>
+  );
+}
+
+function Library() {
+  const { token, user, loading } = useAuth();
+  const [rows, setRows] = useState([]);
+  const [sort, setSort] = useState("score");
+
+  useEffect(() => {
+    if (!token) return;
+    api("/api/ratings/me", { token }).then(setRows).catch(() => setRows([]));
+  }, [token]);
+
+  if (loading) return <Shell><p className="pad">Loading…</p></Shell>;
+  if (!user) return <Navigate to="/login" replace />;
+
+  const sorted = [...rows].sort((a, b) => {
+    if (sort === "score") return b.score - a.score;
+    return (a.anime?.title || "").localeCompare(b.anime?.title || "");
+  });
+
+  return (
+    <Shell>
+      <section className="panel-head">
+        <div>
+          <p className="eyebrow">Library</p>
+          <h1>Your ratings</h1>
+          <p className="lede">These scores train hybrid recommendations for your account.</p>
+        </div>
+        <label className="sort-label">
+          Sort
+          <select value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="score">Highest score</option>
+            <option value="title">Title</option>
+          </select>
+        </label>
+      </section>
+      {sorted.length === 0 ? (
+        <EmptyState
+          icon="ratings"
+          title="No ratings yet"
+          body="Rate titles from Discover or a detail page. Use 7–10 for shows you want more of."
+          action={<Link className="btn" to="/">Start rating</Link>}
+        />
+      ) : (
+        <section className="tile-grid">
+          {sorted.map((r) =>
+            r.anime ? (
+              <AnimeCard key={r.anime_id} anime={r.anime} userScore={r.score} />
+            ) : null
+          )}
+        </section>
+      )}
     </Shell>
   );
 }
@@ -223,68 +708,147 @@ function Detail() {
   const [anime, setAnime] = useState(null);
   const [similar, setSimilar] = useState([]);
   const [message, setMessage] = useState("");
+  const [myScore, setMyScore] = useState(null);
+  const [onShelf, setOnShelf] = useState(false);
+  const clearToast = useEffectEvent(() => setMessage(""));
 
   useEffect(() => {
-    api(`/api/anime/${id}`).then(setAnime).catch((err) => setMessage(err.message));
+    api(`/api/anime/${id}`)
+      .then((a) => {
+        setAnime(a);
+        rememberRecent(a);
+      })
+      .catch((err) => setMessage(err.message));
     api(`/api/anime/${id}/similar`).then(setSimilar).catch(() => {});
   }, [id]);
 
+  useEffect(() => {
+    if (!token) return;
+    api("/api/ratings/me", { token })
+      .then((rows) => {
+        const hit = rows.find((r) => r.anime_id === Number(id));
+        setMyScore(hit?.score ?? null);
+      })
+      .catch(() => {});
+    api("/api/watchlist", { token })
+      .then((rows) => setOnShelf(rows.some((a) => a.id === Number(id))))
+      .catch(() => {});
+  }, [token, id]);
+
   async function rate(score) {
+    if (!token) {
+      setMessage("Sign in to rate");
+      return;
+    }
     await api("/api/ratings", {
       method: "POST",
       token,
       body: { anime_id: Number(id), score },
     });
+    setMyScore(score);
     setMessage(`Rated ${score}/10`);
   }
 
-  async function watch() {
-    await api(`/api/watchlist/${id}`, { method: "POST", token });
-    setMessage("Added to watchlist");
+  async function toggleShelf() {
+    if (!token) {
+      setMessage("Sign in to use your shelf");
+      return;
+    }
+    if (onShelf) {
+      await api(`/api/watchlist/${id}`, { method: "DELETE", token });
+      setOnShelf(false);
+      setMessage("Removed from shelf");
+    } else {
+      await api(`/api/watchlist/${id}`, { method: "POST", token });
+      setOnShelf(true);
+      setMessage("Added to shelf");
+    }
   }
 
-  if (!anime) return <Shell><p className="pad">{message || "Loading..."}</p></Shell>;
+  if (!anime) {
+    return (
+      <Shell>
+        <p className="pad">{message || "Loading title…"}</p>
+      </Shell>
+    );
+  }
 
   return (
     <Shell>
-      <section className="detail">
-        <div className="detail-poster">
+      <section className="detail-hero">
+        <div className="detail-art">
           {anime.image_url ? (
-            <img src={anime.image_url} alt={anime.title} />
+            <img src={anime.image_url} alt="" />
           ) : (
-            <div className="poster-fallback large">{anime.title.slice(0, 1)}</div>
+            <div className="poster-fallback large">
+              <span>{anime.title.slice(0, 1)}</span>
+            </div>
           )}
         </div>
-        <div>
+        <div className="detail-copy">
+          <p className="eyebrow">Title</p>
           <h1>{anime.title}</h1>
-          <p className="meta">
-            {[anime.type, anime.year, anime.episodes ? `${anime.episodes} eps` : null, anime.score ? `★ ${anime.score}` : null]
+          {anime.title_english && anime.title_english !== anime.title && (
+            <p className="aka">{anime.title_english}</p>
+          )}
+          <p className="meta lg">
+            {[anime.type, anime.year, anime.episodes ? `${anime.episodes} eps` : null, anime.status]
               .filter(Boolean)
               .join(" · ")}
           </p>
-          <p className="genres">{anime.genres}</p>
+          <div className="tag-row">
+            {(anime.genres || "")
+              .split(",")
+              .map((g) => g.trim())
+              .filter(Boolean)
+              .map((g) => (
+                <Link key={g} className="chip" to={`/?genre=${encodeURIComponent(g)}`}>
+                  {g}
+                </Link>
+              ))}
+          </div>
           <p className="synopsis">{anime.synopsis}</p>
-          {token && (
-            <div className="actions">
-              <button type="button" className="btn" onClick={watch}>
-                Watchlist
-              </button>
-              {[7, 8, 9, 10].map((score) => (
-                <button key={score} type="button" onClick={() => rate(score)}>
-                  Rate {score}
+          <div className="actions">
+            <button type="button" className="btn" onClick={toggleShelf}>
+              <Icon name={onShelf ? "check" : "plus"} size={16} />
+              {onShelf ? "On shelf" : "Add to shelf"}
+            </button>
+            {anime.score != null && (
+              <span className="score-pill">
+                Catalog <strong>{Number(anime.score).toFixed(1)}</strong>
+              </span>
+            )}
+            {myScore != null && (
+              <span className="score-pill you">Your score <strong>{myScore}</strong></span>
+            )}
+          </div>
+          <div className="rate-panel">
+            <span>Rate</span>
+            <div className="rate-strip large">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={myScore === s ? "active" : ""}
+                  onClick={() => rate(s)}
+                >
+                  {s}
                 </button>
               ))}
             </div>
-          )}
-          {message && <p className="toast">{message}</p>}
+          </div>
         </div>
       </section>
-      <h2 className="section-title">Similar titles</h2>
-      <section className="grid">
+
+      <h2 className="section-title">
+        <Icon name="similar" size={22} /> Similar titles
+      </h2>
+      <section className="tile-grid">
         {similar.map((item) => (
-          <AnimeCard key={item.id} anime={item} token={null} onRate={() => {}} />
+          <AnimeCard key={item.id} anime={item} />
         ))}
       </section>
+      <Toast message={message} onDone={clearToast} />
     </Shell>
   );
 }
@@ -313,10 +877,15 @@ function Login() {
   }
 
   return (
-    <Shell>
+    <div className="auth-screen">
+      <div className="auth-visual" aria-hidden>
+        <img src="/logo.png" alt="" />
+        <div className="auth-glow" />
+      </div>
       <form className="auth-card" onSubmit={submit}>
-        <h1>{mode === "login" ? "Welcome back" : "Create account"}</h1>
-        <p className="hint">Demo login: demo@anime.app / demo1234</p>
+        <p className="eyebrow">Kura</p>
+        <h1>{mode === "login" ? "Open your vault" : "Create a vault login"}</h1>
+        <p className="hint">Local-first demo · demo@anime.app / demo1234</p>
         <label>
           Email
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
@@ -337,26 +906,31 @@ function Login() {
           />
         </label>
         {error && <p className="toast">{error}</p>}
-        <button className="btn" type="submit">
+        <button className="btn block" type="submit">
           {mode === "login" ? "Sign in" : "Register"}
         </button>
         <button
           type="button"
-          className="ghost"
+          className="ghost-btn"
           onClick={() => setMode(mode === "login" ? "register" : "login")}
         >
           {mode === "login" ? "Need an account?" : "Have an account?"}
         </button>
+        <Link to="/" className="text-link">
+          Back to Discover
+        </Link>
       </form>
-    </Shell>
+    </div>
   );
 }
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<Discover />} />
       <Route path="/recommendations" element={<Recommendations />} />
+      <Route path="/shelf" element={<Shelf />} />
+      <Route path="/library" element={<Library />} />
       <Route path="/anime/:id" element={<Detail />} />
       <Route path="/login" element={<Login />} />
     </Routes>

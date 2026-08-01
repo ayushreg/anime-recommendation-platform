@@ -53,6 +53,24 @@ class AnimeListOut(BaseModel):
     items: list[AnimeOut]
 
 
+class SuggestItemOut(BaseModel):
+    id: int
+    title: str
+    year: int | None = None
+    type: str | None = None
+    image_url: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class SuggestOut(BaseModel):
+    items: list[SuggestItemOut]
+
+
+class GenresOut(BaseModel):
+    genres: list[str]
+
+
 class RatingIn(BaseModel):
     anime_id: int
     score: float = Field(ge=1, le=10)

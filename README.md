@@ -1,6 +1,14 @@
-# Anime Recommendation Platform
+# Kura — Local Anime Vault
 
-Full-stack hybrid recommendation system that helps people find what anime to watch next across a large catalog.
+<p align="center">
+  <img src="docs/brand/logo.png" alt="Kura logo" width="128" />
+</p>
+
+<p align="center">
+  <img src="docs/brand/hero.png" alt="Kura hero" width="100%" />
+</p>
+
+**Kura** is a local-first anime recommendation vault. Run it on your machine, browse a large catalog, rate what you watch, and get hybrid personalized picks — no cloud account required beyond your own Docker stack.
 
 **Repo:** https://github.com/ayushreg/anime-recommendation-platform
 
@@ -13,15 +21,15 @@ Full-stack hybrid recommendation system that helps people find what anime to wat
 On first `docker compose up --build`, the API container automatically runs the seed script, which:
 
 1. **Downloads ~12,000 real titles** from the public [Manami anime-offline-database](https://github.com/manami-project/anime-offline-database) on GitHub (titles, tags, images when available).
-2. **If that download fails** (offline, rate limit, etc.), **generates ~12,000 synthetic titles** so search, recommendations, and the UI still work.
+2. **If that download fails** (offline, rate limit, etc.), **generates ~12,000 synthetic titles** and still injects **25 well-known demos** (One Piece, Naruto, Attack on Titan, …) so search stays intuitive.
 3. Creates a **demo account** with sample ratings so “For You” works immediately.
 
-First boot can take several minutes (download + database insert + fitting the ML indexes). Later boots reuse the seeded Postgres volume.
+First boot can take several minutes. Later boots reuse the seeded Postgres volume.
 
 | Requirement | Notes |
 |-------------|--------|
 | Docker Desktop running | Required for the one-command path |
-| Internet on first seed | Recommended for real Manami titles; optional if you accept synthetic fallback |
+| Internet on first seed | Recommended for real Manami titles; optional if you accept synthetic + demo titles |
 | Manual data entry | **Not required** |
 
 Demo login after boot:
@@ -39,24 +47,36 @@ docker compose up --build
 
 | URL | What |
 |-----|------|
-| http://localhost:3000 | Web app |
+| http://localhost:3000 | Kura web app |
 | http://localhost:8000/docs | Interactive API docs |
 | http://localhost:8000/metrics | Prometheus metrics |
 | http://localhost:8000/api/health | Dependency health check |
 
-Stop with `Ctrl+C` or `docker compose down`. Reset the database volume with `docker compose down -v` if you want a clean re-seed.
+Stop with `Ctrl+C` or `docker compose down`. Reset the database with `docker compose down -v` for a clean re-seed.
 
 ---
 
-## What the product does
+## What you can do in the app
 
-Helps viewers discover anime using three ranking modes:
+Local-first app shell (not a marketing landing page):
 
-1. **Lexical / TF-IDF search** — match query text to titles, genres, themes, synopsis  
-2. **Semantic search** — TruncatedSVD dense vectors over TF-IDF (`mode=semantic`)  
-3. **Hybrid personalized recommendations** — content similarity + collaborative filtering from user ratings  
+- **Discover** — command search with autocomplete, hybrid / lexical / semantic modes, genre chips, type filters, recently opened titles
+- **For You** — hybrid personalized recommendations (content + collaborative)
+- **Shelf** — watch-later queue (add / remove)
+- **Library** — your ratings, sortable
+- **Title pages** — synopsis, full 1–10 rating dial, similar titles, shelf toggle
 
-Also includes JWT auth, ratings, watchlist, similar-title pages, Redis caching, and API rate limiting.
+Press `/` anywhere to focus search.
+
+---
+
+## Ranking engine
+
+1. **Lexical / TF-IDF search** — match query text to titles, genres, themes, synopsis (with multi-token SQL fallback)
+2. **Semantic search** — TruncatedSVD dense vectors (`mode=semantic`)
+3. **Hybrid personalized recommendations** — content similarity + collaborative filtering from user ratings
+
+Also includes JWT auth, Redis caching, API rate limiting, and a background model refit worker.
 
 ---
 
@@ -68,37 +88,23 @@ Also includes JWT auth, ratings, watchlist, similar-title pages, Redis caching, 
 | API | FastAPI, Uvicorn, Pydantic, JWT (python-jose), Passlib/bcrypt |
 | ML / ranking | scikit-learn TF-IDF, cosine similarity, collaborative filtering, TruncatedSVD embeddings |
 | Data | PostgreSQL 16, SQLAlchemy 2, Alembic |
-| Catalog seed | Manami offline DB (primary) + synthetic generator (fallback) |
-| Cache / limits | Redis 7 (response cache + fixed-window rate limits) |
+| Catalog seed | Manami offline DB (primary) + synthetic generator + famous-title backfill |
+| Cache / limits | Redis 7 |
 | Observability | Prometheus metrics (`/metrics`), structured health checks |
-| Workers | Background refit worker (TF-IDF + embedding index) |
 | Infra | Docker Compose, GitHub Actions CI |
 
----
-
-## Data source (details)
-
-| Source | When used | What you get |
-|--------|-----------|--------------|
-| **Manami anime-offline-database** (GitHub raw JSON) | Default on first seed with network | Large real-world catalog (~12k titles pulled into Postgres) |
-| **Synthetic generator** | Automatic fallback if Manami download fails | Fake but structured titles/genres so ML + UI still demo cleanly |
-| **Demo users + ratings** | Always on first seed | `demo` / `alice` / `bob` accounts with overlapping ratings for collaborative filtering demos |
-
-Seed entrypoint: `backend/app/seed.py` (also invoked from the `api` service command in `docker-compose.yml`).
-
-You can re-run seeding manually:
-
-```bash
-docker compose exec api python -m app.seed
-```
+Brand assets live in [`docs/brand/`](docs/brand/) (logo, hero, icon sheet).
 
 ---
 
 ## API highlights
 
 - `GET /api/anime/search?q=&mode=hybrid|semantic|lexical`
+- `GET /api/anime/suggest?q=` — autocomplete
+- `GET /api/anime/genres` · `GET /api/anime/browse?genre=&type=&year=`
 - `GET /api/recommendations` (JWT)
-- `POST /api/ratings` (JWT)
+- `POST /api/ratings` · `GET /api/ratings/me` (JWT)
+- `POST|DELETE /api/watchlist/{id}` · `GET /api/watchlist` (JWT)
 - `GET /api/anime/{id}/similar`
 - `GET /api/health` · `GET /api/stats` · `GET /metrics`
 

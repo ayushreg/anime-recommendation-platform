@@ -1,9 +1,12 @@
+from collections import Counter
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Anime
-from app.schemas import AnimeListOut, AnimeOut
+from app.schemas import AnimeListOut, AnimeOut, GenresOut, SuggestItemOut, SuggestOut
 from app.services.embeddings import embedding_index
 from app.services.recommender import recommender
 
@@ -20,6 +23,8 @@ def search_anime(
     if q.strip():
         if mode == "semantic":
             items = embedding_index.semantic_search(db, q, limit=limit)
+        elif mode == "lexical":
+            items = recommender.search(db, q, limit=limit, lexical_only=True)
         else:
             items = recommender.search(db, q, limit=limit)
     else:
@@ -36,6 +41,7 @@ def search_anime(
 def browse(
     genre: str | None = None,
     year: int | None = None,
+    type: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -45,6 +51,8 @@ def browse(
         query = query.filter(Anime.genres.ilike(f"%{genre}%"))
     if year:
         query = query.filter(Anime.year == year)
+    if type:
+        query = query.filter(Anime.type == type)
     total = query.count()
     items = (
         query.order_by(Anime.score.desc().nullslast(), Anime.id.asc())
@@ -53,6 +61,49 @@ def browse(
         .all()
     )
     return AnimeListOut(total=total, items=items)
+
+
+@router.get("/genres", response_model=GenresOut)
+def list_genres(db: Session = Depends(get_db)):
+    rows = db.query(Anime.genres).filter(Anime.genres.isnot(None), Anime.genres != "").all()
+    counts: Counter[str] = Counter()
+    for (raw,) in rows:
+        for part in (raw or "").split(","):
+            name = part.strip()
+            if name:
+                counts[name] += 1
+    top = [g for g, _ in counts.most_common(40)]
+    return GenresOut(genres=sorted(top))
+
+
+@router.get("/suggest", response_model=SuggestOut)
+def suggest_anime(
+    q: str = Query("", min_length=0),
+    db: Session = Depends(get_db),
+):
+    q = q.strip()
+    if not q:
+        return SuggestOut(items=[])
+    pattern = f"%{q}%"
+    rows = (
+        db.query(Anime)
+        .filter(or_(Anime.title.ilike(pattern), Anime.title_english.ilike(pattern)))
+        .order_by(Anime.score.desc().nullslast())
+        .limit(8)
+        .all()
+    )
+    return SuggestOut(
+        items=[
+            SuggestItemOut(
+                id=a.id,
+                title=a.title,
+                year=a.year,
+                type=a.type,
+                image_url=a.image_url,
+            )
+            for a in rows
+        ]
+    )
 
 
 @router.get("/{anime_id}", response_model=AnimeOut)
