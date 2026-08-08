@@ -6,7 +6,7 @@
  * answer when it is not. Writes never touch the cache.
  */
 
-const SHELL = "kura-shell-v2";
+const SHELL = "kura-shell-v3";
 const DATA = "kura-data-v2";
 
 const PRECACHE = [
@@ -14,9 +14,15 @@ const PRECACHE = [
   "/index.html",
   "/logo.png",
   "/mascot.png",
-  "/mascot-chibi.png",
+  "/mascot-bust.png",
+  "/mascot-celebrate.png",
+  "/mascot-search.png",
+  "/mascot-watch.png",
+  "/mascot-think.png",
+  "/mascot-empty.png",
   "/poster-fallback.png",
   "/hero-banner.png",
+  "/hero-vault.png",
   "/favicon.svg",
 ];
 
