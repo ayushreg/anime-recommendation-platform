@@ -6,6 +6,7 @@ import random
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import func, or_
@@ -13,7 +14,24 @@ from sqlalchemy.orm import Session
 
 from app.auth import hash_password
 from app.database import Base, SessionLocal, engine
-from app.models import Anime, Rating, User, WatchlistItem
+from app.migrate import DEFAULT_RUNTIME_BY_TYPE, ensure_schema, franchise_key_for
+from app.models import (
+    ActivityEvent,
+    Anime,
+    Collection,
+    CollectionItem,
+    Friendship,
+    Impression,
+    Note,
+    Rating,
+    TitleFeedback,
+    User,
+    UserPreference,
+    WatchDay,
+    WatchlistItem,
+    WatchSession,
+)
+from app.services.ordering import best_first, safe_filter
 from app.services.recommender import recommender
 
 GENRES = [
@@ -437,7 +455,25 @@ def _famous_row(entry: dict, mal_id: int | None = None) -> dict:
         "image_url": entry.get("image_url"),
         "type": entry.get("type", "TV"),
         "popularity": entry.get("popularity", 100),
+        "season": entry.get("season"),
+        "duration_minutes": entry.get(
+            "duration_minutes", DEFAULT_RUNTIME_BY_TYPE.get(entry.get("type", "TV"), 24)
+        ),
+        "franchise_key": franchise_key_for(entry["title"]),
     }
+
+
+def _duration_minutes(item: dict, kind: str | None) -> int:
+    """Manami ships duration in seconds when it has one. Fall back by type."""
+    raw = item.get("duration")
+    if isinstance(raw, dict):
+        value = raw.get("value")
+        unit = str(raw.get("unit") or "SECONDS").upper()
+        if isinstance(value, (int, float)) and value > 0:
+            minutes = value / 60 if unit.startswith("SECOND") else value
+            if 1 <= minutes <= 400:
+                return int(round(minutes))
+    return DEFAULT_RUNTIME_BY_TYPE.get((kind or "TV").strip(), 24)
 
 
 def _genres_from_tags(tags: list) -> tuple[str, str]:
@@ -484,6 +520,11 @@ def load_from_manami(limit: int = 12000) -> list[dict]:
         if mal_id is not None:
             seen_mal.add(mal_id)
         picture = item.get("picture") or item.get("thumbnail")
+        anime_season = item.get("animeSeason") or {}
+        season = (anime_season.get("season") or "").strip().lower() or None
+        if season in ("undefined", "unknown", ""):
+            season = None
+        kind = item.get("type")
         rows.append(
             {
                 "mal_id": mal_id,
@@ -497,10 +538,13 @@ def load_from_manami(limit: int = 12000) -> list[dict]:
                 "scored_by": 0,
                 "episodes": item.get("episodes"),
                 "status": item.get("status"),
-                "year": (item.get("animeSeason") or {}).get("year"),
+                "year": anime_season.get("year"),
                 "image_url": picture,
-                "type": item.get("type"),
+                "type": kind,
                 "popularity": 0,
+                "season": season,
+                "duration_minutes": _duration_minutes(item, kind),
+                "franchise_key": franchise_key_for(title),
             }
         )
     print(f"Parsed {len(rows)} titles from Manami.")
@@ -545,6 +589,9 @@ def generate_synthetic(limit: int = 12000) -> list[dict]:
                 "image_url": None,
                 "type": random.choice(TYPES),
                 "popularity": random.randint(1, 20000),
+                "season": random.choice(["winter", "spring", "summer", "fall"]),
+                "duration_minutes": random.choice([24, 24, 24, 26, 100]),
+                "franchise_key": franchise_key_for(title),
             }
         )
     return rows
@@ -624,6 +671,9 @@ def ensure_demo_titles(db: Session) -> int:
         for field in ("title_english", "genres", "themes", "studios", "episodes", "status", "year", "type"):
             if entry.get(field) is not None:
                 setattr(row, field, entry[field])
+        row.franchise_key = franchise_key_for(row.title)
+        if not row.duration_minutes:
+            row.duration_minutes = DEFAULT_RUNTIME_BY_TYPE.get(row.type or "TV", 24)
         updated += 1
 
     if inserted or updated:
@@ -814,6 +864,358 @@ def refresh_catalog_from_manami(db: Session, target: int = 12000) -> int:
     return db.query(Anime).count()
 
 
+def enrich_catalog_fields(db: Session, threshold: float = 0.25) -> int:
+    """Backfill season and runtime on a catalog seeded before those columns existed.
+
+    Only runs when most rows are missing a season, so normal boots skip the
+    download entirely.
+    """
+    total = db.query(Anime).count()
+    if not total:
+        return 0
+    with_season = db.query(Anime).filter(Anime.season.isnot(None)).count()
+    if with_season / total >= threshold:
+        print(f"Season data already present on {with_season}/{total} rows. Skipping enrichment.")
+        return 0
+
+    print("Backfilling season and runtime from Manami...")
+    try:
+        with httpx.Client(timeout=180.0, follow_redirects=True) as client:
+            resp = client.get(MANAMI_URL)
+            resp.raise_for_status()
+            payload = resp.json()
+    except Exception as exc:
+        print(f"  Manami unreachable ({exc}). Leaving season data as is.")
+        return 0
+
+    data = payload.get("data", payload if isinstance(payload, list) else [])
+    by_title: dict[str, dict] = {}
+    by_mal: dict[int, dict] = {}
+    for item in data:
+        title = item.get("title") or ""
+        if title:
+            by_title.setdefault(_norm_title(title), item)
+        for src in item.get("sources") or []:
+            if "myanimelist.net/anime/" in str(src):
+                try:
+                    by_mal[int(str(src).rstrip("/").split("/")[-1])] = item
+                except ValueError:
+                    pass
+
+    updated = 0
+    rows = db.query(Anime).filter(Anime.season.is_(None)).all()
+    for row in rows:
+        item = by_mal.get(row.mal_id) if row.mal_id else None
+        if item is None:
+            item = by_title.get(_norm_title(row.title))
+        if item is None:
+            continue
+        anime_season = item.get("animeSeason") or {}
+        season = (anime_season.get("season") or "").strip().lower()
+        if season and season not in ("undefined", "unknown"):
+            row.season = season
+            updated += 1
+        if not row.year and anime_season.get("year"):
+            row.year = anime_season["year"]
+        row.duration_minutes = _duration_minutes(item, row.type)
+        if updated and updated % 2000 == 0:
+            db.commit()
+            print(f"  enriched {updated} rows")
+
+    db.commit()
+    print(f"Season backfill complete: {updated} rows updated.")
+    return updated
+
+
+def clean_generated_copy(db: Session) -> int:
+    """Older seeds wrote em dashes into synthesized synopses. House style says no."""
+    from sqlalchemy import text as sql_text
+
+    result = db.execute(
+        sql_text(
+            "UPDATE anime SET synopsis = REPLACE(REPLACE(synopsis, ' — tagged:', '. Tagged:'),"
+            " '—', '-') WHERE synopsis LIKE '%—%'"
+        )
+    )
+    db.commit()
+    changed = result.rowcount or 0
+    if changed:
+        print(f"Cleaned dashes out of {changed} generated synopses.")
+    return changed
+
+
+def seed_demo_signals(db: Session) -> None:
+    """Give a fresh boot something to look at on every new surface.
+
+    All of it is generated locally: watch days, sessions, impressions,
+    collections, notes, and follows between the three demo accounts. No external
+    telemetry, no scraping, nothing that pretends to be a real stream.
+    """
+    demo = db.query(User).filter(User.email == "demo@anime.app").first()
+    if not demo:
+        return
+    if db.query(WatchDay).filter(WatchDay.user_id == demo.id).count() > 0:
+        print("Demo telemetry already present.")
+        return
+
+    alice = db.query(User).filter(User.email == "alice@anime.app").first()
+    bob = db.query(User).filter(User.email == "bob@anime.app").first()
+    users = [u for u in (demo, alice, bob) if u]
+
+    random.seed(11)
+
+    for user in users:
+        if not db.query(UserPreference).filter(UserPreference.user_id == user.id).first():
+            db.add(UserPreference(user_id=user.id))
+
+    # Titles with real posters make the demo screens look like the real thing.
+    pool = (
+        safe_filter(db.query(Anime))
+        .filter(Anime.image_url.isnot(None), Anime.image_url != "")
+        .order_by(*best_first())
+        .limit(240)
+        .all()
+    )
+    if not pool:
+        pool = db.query(Anime).order_by(Anime.id).limit(240).all()
+    if not pool:
+        return
+
+    today = datetime.now(timezone.utc).date()
+
+    # A believable viewing history: a solid recent streak, gaps further back.
+    for user in users:
+        span = 75 if user.id == demo.id else 40
+        for offset in range(span):
+            day = today - timedelta(days=offset)
+            if offset < 9:
+                watched = True  # live streak for the heatmap
+            elif offset < 30:
+                watched = random.random() < 0.62
+            else:
+                watched = random.random() < 0.35
+            if not watched:
+                continue
+            episodes = random.randint(1, 5)
+            seconds = episodes * random.randint(1150, 1500)
+            db.add(
+                WatchDay(user_id=user.id, day=day, seconds=seconds, episodes=episodes)
+            )
+
+    # A finished backlog, dated in order, so completion history is real enough
+    # for the sequence model and the vault health numbers.
+    marquee = [a for a in pool if (a.score or 0) >= 8][:40] or pool[:40]
+    for user in users:
+        picks = random.sample(marquee, k=min(14, len(marquee)))
+        for order, anime in enumerate(picks):
+            finished_at = datetime.now(timezone.utc) - timedelta(
+                days=(len(picks) - order) * random.randint(4, 11)
+            )
+            item = (
+                db.query(WatchlistItem)
+                .filter(WatchlistItem.user_id == user.id, WatchlistItem.anime_id == anime.id)
+                .first()
+            )
+            if not item:
+                item = WatchlistItem(user_id=user.id, anime_id=anime.id)
+                db.add(item)
+            item.status = "completed"
+            item.progress = anime.episodes or 12
+            item.completed_at = finished_at
+            item.updated_at = finished_at
+            item.watch_seconds = (anime.episodes or 12) * (anime.duration_minutes or 24) * 60
+            item.rewatches = 1 if random.random() < 0.2 else 0
+
+            if not (
+                db.query(Rating)
+                .filter(Rating.user_id == user.id, Rating.anime_id == anime.id)
+                .first()
+            ):
+                db.add(
+                    Rating(
+                        user_id=user.id,
+                        anime_id=anime.id,
+                        score=float(random.choice([7, 8, 8, 9, 9, 10])),
+                        created_at=finished_at,
+                    )
+                )
+
+        # A couple of honest drops so the abandonment rate is not a flat zero.
+        for anime in random.sample(pool, k=2):
+            item = (
+                db.query(WatchlistItem)
+                .filter(WatchlistItem.user_id == user.id, WatchlistItem.anime_id == anime.id)
+                .first()
+            )
+            if item:
+                continue
+            db.add(
+                WatchlistItem(
+                    user_id=user.id,
+                    anime_id=anime.id,
+                    status="dropped",
+                    progress=random.randint(1, 3),
+                )
+            )
+
+    # A plan-to-watch backlog worth showing on the health card.
+    for anime in random.sample(pool, k=min(9, len(pool))):
+        if (
+            db.query(WatchlistItem)
+            .filter(WatchlistItem.user_id == demo.id, WatchlistItem.anime_id == anime.id)
+            .first()
+        ):
+            continue
+        db.add(WatchlistItem(user_id=demo.id, anime_id=anime.id, status="plan_to_watch"))
+
+    db.flush()
+
+    # Currently watching shelf plus closed sessions behind it. Skip anything
+    # already filed above so a completed run does not get rewound.
+    taken = {
+        row.anime_id
+        for row in db.query(WatchlistItem).filter(WatchlistItem.user_id == demo.id).all()
+    }
+    free = [a for a in pool if a.id not in taken and (a.episodes or 0) > 2]
+    watching = random.sample(free, k=min(6, len(free))) if free else []
+    for index, anime in enumerate(watching):
+        total = anime.episodes or 12
+        progress = max(1, min(total - 1, random.randint(1, max(2, total // 2))))
+        item = (
+            db.query(WatchlistItem)
+            .filter(WatchlistItem.user_id == demo.id, WatchlistItem.anime_id == anime.id)
+            .first()
+        )
+        if not item:
+            item = WatchlistItem(user_id=demo.id, anime_id=anime.id)
+            db.add(item)
+        item.status = "watching"
+        item.progress = progress
+        item.watch_seconds = progress * (anime.duration_minutes or 24) * 60
+        item.updated_at = datetime.now(timezone.utc) - timedelta(hours=index * 7)
+
+        started = datetime.now(timezone.utc) - timedelta(days=index + 1, hours=2)
+        db.add(
+            WatchSession(
+                user_id=demo.id,
+                anime_id=anime.id,
+                device_id="demo-seed",
+                device_label="Seeded history",
+                active_seconds=random.randint(1400, 5200),
+                episodes_ticked=random.randint(1, 3),
+                source="demo",
+                started_at=started,
+                last_beat_at=started + timedelta(minutes=random.randint(25, 90)),
+                ended_at=started + timedelta(minutes=random.randint(30, 95)),
+            )
+        )
+
+    # Impressions so the explore/exploit rail and metrics panel are not empty.
+    surfaces = ["discover", "for_you", "search", "similar"]
+    for anime in random.sample(pool, k=min(90, len(pool))):
+        views = random.randint(1, 9)
+        for _ in range(views):
+            db.add(
+                Impression(
+                    user_id=demo.id,
+                    anime_id=anime.id,
+                    surface=random.choice(surfaces),
+                    kind="view",
+                    dwell_ms=random.randint(200, 4200),
+                    position=random.randint(0, 30),
+                    created_at=datetime.now(timezone.utc)
+                    - timedelta(days=random.randint(0, 12), minutes=random.randint(0, 900)),
+                )
+            )
+        if random.random() < 0.35:
+            db.add(
+                Impression(
+                    user_id=demo.id,
+                    anime_id=anime.id,
+                    surface="discover",
+                    kind="click",
+                    dwell_ms=random.randint(1500, 9000),
+                )
+            )
+
+    # A couple of dismissals so the negative-signal panel has content.
+    for anime in random.sample(pool, k=min(4, len(pool))):
+        db.add(
+            TitleFeedback(
+                user_id=demo.id,
+                anime_id=anime.id,
+                reason=random.choice(["not_interested", "wrong_vibe", "too_long"]),
+            )
+        )
+
+    # Starter collections with real members.
+    starters = [
+        ("Comfort rewatch", "~", "Shows that always work when nothing else does"),
+        ("Cyberpunk night", "#", "Neon, rain, and questionable life choices"),
+        ("Finish this year", "!", "The backlog I keep promising to close"),
+    ]
+    for name, emoji, description in starters:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        existing = (
+            db.query(Collection)
+            .filter(Collection.user_id == demo.id, Collection.slug == slug)
+            .first()
+        )
+        if existing:
+            continue
+        collection = Collection(
+            user_id=demo.id, name=name, slug=slug, emoji=emoji, description=description
+        )
+        db.add(collection)
+        db.flush()
+        for anime in random.sample(pool, k=min(5, len(pool))):
+            db.add(CollectionItem(collection_id=collection.id, anime_id=anime.id))
+
+    # One note so the detail page shows the feature rather than an empty box.
+    first = watching[0] if watching else pool[0]
+    if not db.query(Note).filter(Note.user_id == demo.id, Note.anime_id == first.id).first():
+        db.add(
+            Note(
+                user_id=demo.id,
+                anime_id=first.id,
+                body="Picked this back up after months away. Episode 4 is where it clicks.",
+            )
+        )
+
+    # Follows so the feed and leaderboard have rows.
+    for other in (alice, bob):
+        if not other:
+            continue
+        if (
+            not db.query(Friendship)
+            .filter(Friendship.user_id == demo.id, Friendship.friend_id == other.id)
+            .first()
+        ):
+            db.add(Friendship(user_id=demo.id, friend_id=other.id))
+        if (
+            not db.query(Friendship)
+            .filter(Friendship.user_id == other.id, Friendship.friend_id == demo.id)
+            .first()
+        ):
+            db.add(Friendship(user_id=other.id, friend_id=demo.id))
+
+    for user in users:
+        for anime in random.sample(pool, k=min(4, len(pool))):
+            db.add(
+                ActivityEvent(
+                    user_id=user.id,
+                    anime_id=anime.id,
+                    kind=random.choice(["rated", "completed", "watch_started"]),
+                    detail=anime.title,
+                    created_at=datetime.now(timezone.utc)
+                    - timedelta(days=random.randint(0, 6), hours=random.randint(0, 20)),
+                )
+            )
+
+    db.commit()
+    print("Seeded demo telemetry: watch days, sessions, impressions, collections, follows.")
+
+
 def seed_users_and_ratings(db: Session) -> None:
     demo = db.query(User).filter(User.email == "demo@anime.app").first()
     alice = db.query(User).filter(User.email == "alice@anime.app").first()
@@ -856,7 +1258,18 @@ def seed_users_and_ratings(db: Session) -> None:
         print(f"Demo ratings already exist ({existing_ratings}).")
         return
 
-    anime_ids = [a.id for a in db.query(Anime.id).order_by(Anime.id).limit(800).all()]
+    # Rate titles people have heard of. Sampling by raw id lands on obscure
+    # alphabetical rows and makes For You look broken on a fresh boot.
+    anime_ids = [
+        a.id
+        for a in safe_filter(db.query(Anime.id))
+        .filter(Anime.image_url.isnot(None), Anime.image_url != "")
+        .order_by(*best_first())
+        .limit(400)
+        .all()
+    ]
+    if len(anime_ids) < 40:
+        anime_ids = [a.id for a in db.query(Anime.id).order_by(Anime.id).limit(800).all()]
     if not anime_ids:
         return
 
@@ -877,10 +1290,13 @@ def reseed_with_images(target: int = 12000) -> None:
     """Wipe anime/ratings/watchlist, reload Manami with pictures, recreate demo ratings."""
     print("Initializing database schema...")
     Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)
     db = SessionLocal()
     try:
         count = refresh_catalog_from_manami(db, target=target)
         seed_users_and_ratings(db)
+        ensure_schema(engine)
+        seed_demo_signals(db)
         print("Fitting recommendation model...")
         recommender.fit(db)
         with_img = (
@@ -903,12 +1319,18 @@ def reseed_with_images(target: int = 12000) -> None:
 def main() -> None:
     print("Initializing database schema...")
     Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)
     db = SessionLocal()
     try:
         count = seed_anime(db, target=12000)
         ensure_demo_titles(db)
         count = db.query(Anime).count()
+        enrich_catalog_fields(db)
+        clean_generated_copy(db)
         seed_users_and_ratings(db)
+        # Re-run so friend codes exist for accounts created moments ago.
+        ensure_schema(engine)
+        seed_demo_signals(db)
         print("Fitting recommendation model...")
         recommender.fit(db)
         with_img = (
@@ -921,10 +1343,58 @@ def main() -> None:
         db.close()
 
 
+def reseed_signals() -> None:
+    """Rebuild only the demo telemetry, leaving the catalog and accounts alone."""
+    print("Clearing demo telemetry...")
+    Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)
+    db = SessionLocal()
+    try:
+        user_ids = [
+            u.id
+            for u in db.query(User)
+            .filter(User.email.in_(["demo@anime.app", "alice@anime.app", "bob@anime.app"]))
+            .all()
+        ]
+        if not user_ids:
+            print("No demo accounts found. Run the normal seed first.")
+            return
+        for model in (WatchDay, WatchSession, Impression, TitleFeedback, ActivityEvent):
+            db.query(model).filter(model.user_id.in_(user_ids)).delete(synchronize_session=False)
+        collection_ids = [
+            c.id for c in db.query(Collection).filter(Collection.user_id.in_(user_ids)).all()
+        ]
+        if collection_ids:
+            db.query(CollectionItem).filter(
+                CollectionItem.collection_id.in_(collection_ids)
+            ).delete(synchronize_session=False)
+        db.query(Collection).filter(Collection.user_id.in_(user_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Note).filter(Note.user_id.in_(user_ids)).delete(synchronize_session=False)
+        db.query(Friendship).filter(Friendship.user_id.in_(user_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(WatchlistItem).filter(WatchlistItem.user_id.in_(user_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Rating).filter(Rating.user_id.in_(user_ids)).delete(synchronize_session=False)
+        db.commit()
+        clean_generated_copy(db)
+        seed_users_and_ratings(db)
+        seed_demo_signals(db)
+        recommender.fit(db)
+        print("Demo telemetry rebuilt.")
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     try:
         if "--reseed-images" in sys.argv:
             reseed_with_images()
+        elif "--reseed-signals" in sys.argv:
+            reseed_signals()
         else:
             main()
     except Exception as exc:

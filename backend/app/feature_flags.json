@@ -1,0 +1,18 @@
+{
+  "watch_timer": true,
+  "auto_tick": true,
+  "impressions": true,
+  "explore_boost": true,
+  "collections": true,
+  "insights": true,
+  "seasons": true,
+  "social": true,
+  "command_palette": true,
+  "keyboard_mode": true,
+  "poster_tint": true,
+  "sound_design": true,
+  "admin_panel": true,
+  "vault_backup": true,
+  "surprise_me": true,
+  "taste_quiz": true
+}

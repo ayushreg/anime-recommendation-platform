@@ -123,6 +123,79 @@ export function Icon({ name, size = 20, className = "" }) {
           <path d="M12 3v4M12 17v4M4.5 6.5l2.8 2.8M16.7 14.7l2.8 2.8M3 12h4M17 12h4M4.5 17.5l2.8-2.8M16.7 9.3l2.8-2.8" />
         </svg>
       );
+    case "stack":
+      return (
+        <svg {...props}>
+          <path d="M12 4l8 4-8 4-8-4 8-4z" />
+          <path d="M4 12l8 4 8-4M4 16l8 4 8-4" opacity="0.6" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg {...props}>
+          <path d="M4 20V6M10 20v-8M16 20v-5M22 20H2" />
+          <circle cx="10" cy="9" r="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "calendar":
+      return (
+        <svg {...props}>
+          <rect x="4" y="5" width="16" height="16" rx="2" />
+          <path d="M4 10h16M9 3v4M15 3v4" />
+        </svg>
+      );
+    case "friends":
+      return (
+        <svg {...props}>
+          <circle cx="9" cy="9" r="3" />
+          <path d="M3 19c1.2-3 3.4-4.5 6-4.5s4.8 1.5 6 4.5" />
+          <path d="M16 7.2a3 3 0 0 1 0 5.6M18 19c-.4-1.6-1-2.9-1.8-3.9" opacity="0.6" />
+        </svg>
+      );
+    case "gear":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1" />
+        </svg>
+      );
+    case "play":
+      return (
+        <svg {...props}>
+          <polygon points="8,5 19,12 8,19" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "more":
+      return (
+        <svg {...props}>
+          <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "dice":
+      return (
+        <svg {...props}>
+          <rect x="4" y="4" width="16" height="16" rx="3" />
+          <circle cx="9" cy="9" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="15" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="9" r="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "server":
+      return (
+        <svg {...props}>
+          <rect x="3" y="4" width="18" height="7" rx="2" />
+          <rect x="3" y="13" width="18" height="7" rx="2" />
+          <path d="M7 7.5h.01M7 16.5h.01" />
+        </svg>
+      );
+    case "download":
+      return (
+        <svg {...props}>
+          <path d="M12 4v10M8 11l4 4 4-4M5 19h14" />
+        </svg>
+      );
     default:
       return (
         <svg {...props}>

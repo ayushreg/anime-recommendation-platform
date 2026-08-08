@@ -21,13 +21,49 @@ def get_redis() -> redis.Redis | None:
         return None
 
 
+def _bump(result: str) -> None:
+    """Count hits and misses in Redis so every worker shares one tally."""
+    client = get_redis()
+    if not client:
+        return
+    try:
+        client.incr(f"stats:cache:{result}")
+    except Exception:
+        pass
+    try:
+        from app.services.metrics import CACHE_EVENTS
+
+        CACHE_EVENTS.labels(result=result).inc()
+    except Exception:
+        pass
+
+
+def cache_stats() -> dict[str, int | float]:
+    client = get_redis()
+    if not client:
+        return {"hits": 0, "misses": 0, "hit_rate": 0.0}
+    try:
+        hits = int(client.get("stats:cache:hit") or 0)
+        misses = int(client.get("stats:cache:miss") or 0)
+    except Exception:
+        hits, misses = 0, 0
+    total = hits + misses
+    return {
+        "hits": hits,
+        "misses": misses,
+        "hit_rate": round(hits / total, 4) if total else 0.0,
+    }
+
+
 def cache_get(key: str) -> Any | None:
     client = get_redis()
     if not client:
         return None
     raw = client.get(key)
     if raw is None:
+        _bump("miss")
         return None
+    _bump("hit")
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

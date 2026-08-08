@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
@@ -17,74 +17,60 @@ from app.schemas import (
     RecommendationsResponse,
     WATCH_STATUSES,
 )
+from app.services import events
+from app.services.attention import hidden_ids
 from app.services.cache import cache_delete_pattern
+from app.services.library import (
+    advance_episode,
+    get_preferences,
+    library_out,
+    now,
+    upsert_library,
+)
+from app.services.metrics import EPISODES_TICKED, RANKING_LATENCY, RANKING_REQUESTS
 from app.services.recommender import recommender
 
 router = APIRouter(prefix="/api", tags=["recommendations"])
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _library_out(item: WatchlistItem, anime: Anime | None = None) -> LibraryEntryOut:
-    return LibraryEntryOut(
-        anime_id=item.anime_id,
-        status=item.status or "plan_to_watch",
-        progress=int(item.progress or 0),
-        updated_at=item.updated_at,
-        created_at=item.created_at,
-        anime=AnimeOut.model_validate(anime) if anime else None,
-    )
-
-
-def _upsert_library(
-    db: Session,
-    user_id: int,
-    anime_id: int,
-    *,
-    status_value: str | None = None,
-    progress: int | None = None,
-) -> WatchlistItem:
-    item = (
-        db.query(WatchlistItem)
-        .filter(WatchlistItem.user_id == user_id, WatchlistItem.anime_id == anime_id)
-        .first()
-    )
-    if not item:
-        item = WatchlistItem(
-            user_id=user_id,
-            anime_id=anime_id,
-            status=status_value or "plan_to_watch",
-            progress=progress if progress is not None else 0,
-            updated_at=_now(),
-        )
-        db.add(item)
-    else:
-        if status_value is not None:
-            item.status = status_value
-        if progress is not None:
-            item.progress = progress
-        item.updated_at = _now()
-    return item
-
-
 @router.get("/recommendations", response_model=RecommendationsResponse)
 def recommendations(
     limit: int = Query(12, ge=1, le=50),
+    variant: str | None = Query(None, pattern="^(hybrid|content|collaborative|popularity)$"),
+    diversity: float | None = Query(None, ge=0, le=1),
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    scored, cached = recommender.recommend_for_user(db, user.id, limit=limit)
+    prefs = get_preferences(db, user.id)
+    db.commit()
+    use_variant = variant or prefs.ranking_variant or "hybrid"
+    use_diversity = diversity if diversity is not None else float(prefs.diversity or 0.35)
+
+    started = time.perf_counter()
+    scored, cached = recommender.recommend_for_user(
+        db,
+        user.id,
+        limit=limit,
+        variant=use_variant,
+        diversity=use_diversity,
+        exclude_ids=hidden_ids(db, user.id),
+    )
+    RANKING_LATENCY.observe(time.perf_counter() - started)
+    RANKING_REQUESTS.labels(variant=use_variant, cached=str(bool(cached)).lower()).inc()
+
     return RecommendationsResponse(
         user_id=user.id,
         cached=cached,
+        variant=use_variant,
+        diversity=round(use_diversity, 2),
         recommendations=[
             RecommendationOut(
                 anime=AnimeOut.model_validate(s.anime),
                 reason=s.reason,
                 score=round(s.score, 4),
                 method=s.method,
+                seed_title=s.seed_title,
+                shared_tags=s.shared_tags or [],
             )
             for s in scored
         ],
@@ -108,16 +94,24 @@ def upsert_rating(
     )
     if rating:
         rating.score = payload.score
+        rating.updated_at = now()
     else:
         rating = Rating(user_id=user.id, anime_id=payload.anime_id, score=payload.score)
         db.add(rating)
 
     # Auto-track: rating a show marks it completed (and fills episode progress when known).
     progress = anime.episodes if anime.episodes and anime.episodes > 0 else None
-    item = _upsert_library(db, user.id, anime.id, status_value="completed", progress=progress)
+    item = upsert_library(db, user.id, anime.id, status_value="completed", progress=progress)
     if progress is None and (item.progress or 0) == 0:
         item.progress = 1
 
+    events.record(
+        db,
+        user_id=user.id,
+        kind="rated",
+        anime_id=anime.id,
+        detail=f"{anime.title} scored {payload.score:g}",
+    )
     db.commit()
     cache_delete_pattern(f"recs:user:{user.id}:*")
     return RatingOut(anime_id=rating.anime_id, score=rating.score, anime=anime)
@@ -163,12 +157,20 @@ def upsert_library_entry(
     if anime.episodes and progress >= anime.episodes and status_value == "watching":
         status_value = "completed"
 
-    item = _upsert_library(
+    item = upsert_library(
         db, user.id, anime_id, status_value=status_value, progress=int(progress or 0)
     )
+    if status_value in ("watching", "completed"):
+        events.record(
+            db,
+            user_id=user.id,
+            kind="completed" if status_value == "completed" else "watch_started",
+            anime_id=anime.id,
+            detail=anime.title,
+        )
     db.commit()
     db.refresh(item)
-    return _library_out(item, anime)
+    return library_out(item, anime)
 
 
 @router.post("/library/{anime_id}/tick", response_model=ProgressBumpOut)
@@ -182,25 +184,20 @@ def tick_episode(
     if not anime:
         raise HTTPException(status_code=404, detail="Anime not found")
 
-    item = (
-        db.query(WatchlistItem)
-        .filter(WatchlistItem.user_id == user.id, WatchlistItem.anime_id == anime_id)
-        .first()
-    )
-    current = int(item.progress or 0) if item else 0
-    nxt = current + 1
-    status_value = "watching"
-    if anime.episodes and nxt >= anime.episodes:
-        nxt = anime.episodes
-        status_value = "completed"
-
-    item = _upsert_library(db, user.id, anime_id, status_value=status_value, progress=nxt)
+    item, finished = advance_episode(db, user.id, anime)
+    EPISODES_TICKED.labels(mode="manual").inc()
+    if finished:
+        events.record(
+            db, user_id=user.id, kind="completed", anime_id=anime.id, detail=anime.title
+        )
     db.commit()
     db.refresh(item)
     return ProgressBumpOut(
         anime_id=anime_id,
         status=item.status,
         progress=item.progress,
+        rewatches=int(item.rewatches or 0),
+        is_rewatching=bool(item.is_rewatching),
         anime=AnimeOut.model_validate(anime),
     )
 
@@ -222,7 +219,7 @@ def list_library(
     for row in rows:
         anime = db.get(Anime, row.anime_id)
         if anime:
-            out.append(_library_out(row, anime))
+            out.append(library_out(row, anime))
     return out
 
 
@@ -239,7 +236,7 @@ def continue_watching(
         .limit(limit)
         .all()
     )
-    return [_library_out(r, db.get(Anime, r.anime_id)) for r in rows if db.get(Anime, r.anime_id)]
+    return [library_out(r, db.get(Anime, r.anime_id)) for r in rows if db.get(Anime, r.anime_id)]
 
 
 @router.post("/watchlist/{anime_id}", response_model=AnimeOut)
@@ -251,7 +248,7 @@ def add_watchlist(
     anime = db.get(Anime, anime_id)
     if not anime:
         raise HTTPException(status_code=404, detail="Anime not found")
-    _upsert_library(db, user.id, anime_id, status_value="plan_to_watch")
+    upsert_library(db, user.id, anime_id, status_value="plan_to_watch")
     db.commit()
     return anime
 

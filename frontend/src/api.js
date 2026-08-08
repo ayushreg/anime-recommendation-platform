@@ -1,14 +1,15 @@
 const API_BASE = "";
 
-export async function api(path, { method = "GET", body, token } = {}) {
+export async function api(path, { method = "GET", body, token, signal, raw } = {}) {
   const headers = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (body !== undefined && !raw) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+    body: raw ? body : body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   if (!res.ok) {
@@ -19,11 +20,33 @@ export async function api(path, { method = "GET", body, token } = {}) {
     } catch {
       /* ignore */
     }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    const error = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    // Callers need to tell "your session expired" apart from "the server hiccuped".
+    error.status = res.status;
+    throw error;
   }
 
   if (res.status === 204) return null;
   return res.json();
+}
+
+/**
+ * Fire-and-forget POST that survives the page being closed mid-flight.
+ * Used for impression batches so leaving the tab does not drop the last one.
+ */
+export function beacon(path, payload, token) {
+  const body = JSON.stringify(payload);
+  if (!token && navigator.sendBeacon) {
+    try {
+      navigator.sendBeacon(path, new Blob([body], { type: "application/json" }));
+      return;
+    } catch {
+      /* fall through to fetch */
+    }
+  }
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  fetch(path, { method: "POST", headers, body, keepalive: true }).catch(() => {});
 }
 
 export async function loginRequest(email, password) {

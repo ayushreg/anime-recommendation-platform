@@ -14,15 +14,38 @@ export function AuthProvider({ children }) {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     setLoading(true);
-    api("/api/auth/me", { token })
-      .then(setUser)
-      .catch(() => {
-        localStorage.removeItem("anime_token");
-        setToken(null);
-        setUser(null);
-      })
-      .finally(() => setLoading(false));
+
+    // Only a real rejection ends the session. A rate limit, a restarting API,
+    // or a dropped connection gets retried instead of throwing away a login.
+    async function resolveUser() {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const me = await api("/api/auth/me", { token });
+          if (!cancelled) setUser(me);
+          return;
+        } catch (err) {
+          if (err?.status === 401 || err?.status === 403) {
+            if (!cancelled) {
+              localStorage.removeItem("anime_token");
+              setToken(null);
+              setUser(null);
+            }
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+        }
+      }
+    }
+
+    resolveUser().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const value = useMemo(
