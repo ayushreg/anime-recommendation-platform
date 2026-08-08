@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Icon } from "../icons";
@@ -8,24 +8,45 @@ import { setSoundEnabled } from "../lib/sound";
 import { CommandPalette } from "./CommandPalette";
 import { Mascot } from "./Mascot";
 
-const NAV = [
-  { to: "/", icon: "discover", label: "Discover", end: true },
-  { to: "/watching", icon: "watch", label: "Watching" },
-  { to: "/recommendations", icon: "foryou", label: "For You" },
-  { to: "/collections", icon: "stack", label: "Lists", flag: "collections" },
-  { to: "/insights", icon: "chart", label: "Insights", flag: "insights" },
-  { to: "/seasons", icon: "calendar", label: "Seasons", flag: "seasons" },
-  { to: "/shelf", icon: "shelf", label: "Shelf" },
-  { to: "/library", icon: "ratings", label: "Library" },
-  { to: "/social", icon: "friends", label: "Friends", flag: "social" },
+/**
+ * Grouped, because eleven flat links is a list you read every time instead of
+ * a shape you learn. "Browse" is where you go to find something, "Yours" is
+ * where you go to look at what you already have.
+ */
+const NAV_GROUPS = [
+  {
+    label: "Browse",
+    items: [
+      { to: "/", icon: "discover", label: "Discover", end: true },
+      { to: "/recommendations", icon: "foryou", label: "For You" },
+      { to: "/upcoming", icon: "broadcast", label: "Upcoming", flag: "live_data" },
+      { to: "/seasons", icon: "calendar", label: "Seasons", flag: "seasons" },
+    ],
+  },
+  {
+    label: "Yours",
+    items: [
+      { to: "/watching", icon: "watch", label: "Watching" },
+      { to: "/shelf", icon: "shelf", label: "Shelf" },
+      { to: "/library", icon: "ratings", label: "Ratings" },
+      { to: "/collections", icon: "stack", label: "Lists", flag: "collections" },
+    ],
+  },
+  {
+    label: "More",
+    items: [
+      { to: "/insights", icon: "chart", label: "Insights", flag: "insights" },
+      { to: "/social", icon: "friends", label: "Friends", flag: "social" },
+    ],
+  },
 ];
 
 const MOBILE_NAV = [
   { to: "/", icon: "discover", label: "Discover", end: true },
+  { to: "/upcoming", icon: "broadcast", label: "Upcoming" },
   { to: "/watching", icon: "watch", label: "Watching" },
+  { to: "/shelf", icon: "shelf", label: "Shelf" },
   { to: "/recommendations", icon: "foryou", label: "For You" },
-  { to: "/collections", icon: "stack", label: "Lists" },
-  { to: "/insights", icon: "chart", label: "Insights" },
 ];
 
 const GOTO = {
@@ -90,6 +111,7 @@ export function Shell({ children, searchSlot, mascot = "idle" }) {
   const { user, logout } = useAuth();
   const { prefs, flag } = usePrefs();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [stats, setStats] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -137,7 +159,10 @@ export function Shell({ children, searchSlot, mascot = "idle" }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate, pendingG, flag]);
 
-  const visibleNav = NAV.filter((item) => !item.flag || flag(item.flag));
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.flag || flag(item.flag)),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="app-shell">
@@ -155,10 +180,15 @@ export function Shell({ children, searchSlot, mascot = "idle" }) {
         </Link>
 
         <nav className="rail-nav">
-          {visibleNav.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end}>
-              <Icon name={item.icon} /> {item.label}
-            </NavLink>
+          {visibleGroups.map((group) => (
+            <div className="rail-group" key={group.label}>
+              <p className="rail-group-label">{group.label}</p>
+              {group.items.map((item) => (
+                <NavLink key={item.to} to={item.to} end={item.end}>
+                  <Icon name={item.icon} /> {item.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -224,7 +254,10 @@ export function Shell({ children, searchSlot, mascot = "idle" }) {
             </button>
           </div>
         </header>
-        <main className="workspace-main" id="workspace-main" tabIndex={-1}>
+        {/* Keyed on the path so React remounts on navigation and the entrance
+            animation actually replays. Without the key it plays once, on the
+            first page you happen to land on. */}
+        <main className="workspace-main" id="workspace-main" tabIndex={-1} key={pathname}>
           {children}
         </main>
       </div>

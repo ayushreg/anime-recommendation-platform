@@ -214,7 +214,7 @@ export function CollectionDetail() {
           }
         />
       ) : (
-        <section className="tile-grid">
+        <section className="tile-grid stagger">
           {list.items.map((anime, i) => (
             <AnimeCard
               key={anime.id}

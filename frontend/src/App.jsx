@@ -12,6 +12,7 @@ import { Seasons } from "./pages/Seasons";
 import { Settings } from "./pages/Settings";
 import { Library, Shelf } from "./pages/Shelf";
 import { Social } from "./pages/Social";
+import { Upcoming } from "./pages/Upcoming";
 import { Watching } from "./pages/Watching";
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/collections/:id" element={<CollectionDetail />} />
       <Route path="/insights" element={<Insights />} />
       <Route path="/seasons" element={<Seasons />} />
+      <Route path="/upcoming" element={<Upcoming />} />
       <Route path="/social" element={<Social />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/quiz" element={<Quiz />} />

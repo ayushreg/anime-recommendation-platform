@@ -1,6 +1,21 @@
 import React from "react";
 
-/** Custom stroke icon set for Kura (signal accents on chalk strokes) */
+/**
+ * Kura's icon set.
+ *
+ * House rules, so twenty-eight glyphs read as one family:
+ *
+ * - 24x24 box, artwork inside 3..21, so nothing touches the edge
+ * - 1.75 stroke, round caps and joins, no sub-pixel diagonals
+ * - one filled "signal" dot per icon at most, used to mark the thing the icon
+ *   is actually about (the pin on a map, the eye of a timer). It is the motif
+ *   that ties the set to the brand, and it stops being a motif if every shape
+ *   gets one
+ * - shapes sit on whole or half pixels at 24px so they stay crisp unscaled
+ */
+
+const ACCENT = { fill: "currentColor", stroke: "none" };
+
 export function Icon({ name, size = 20, className = "" }) {
   const props = {
     width: size,
@@ -13,193 +28,235 @@ export function Icon({ name, size = 20, className = "" }) {
     strokeLinejoin: "round",
     className: `icon icon-${name} ${className}`.trim(),
     "aria-hidden": true,
+    focusable: false,
   };
 
   switch (name) {
+    // ------------------------------------------------------------- navigation
     case "discover":
+      // Compass: the needle is the accent.
       return (
         <svg {...props}>
-          <circle cx="12" cy="12" r="9" />
-          <polygon points="12,7 14.5,12 12,17 9.5,12" fill="currentColor" stroke="none" opacity="0.85" />
-        </svg>
-      );
-    case "foryou":
-      return (
-        <svg {...props}>
-          <path d="M4 14c3-6 6-8 8-8s5 2 8 8" />
-          <path d="M12 6v12" />
-          <circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none" />
-        </svg>
-      );
-    case "shelf":
-      return (
-        <svg {...props}>
-          <path d="M4 6h16M4 12h16M4 18h16" />
-          <path d="M7 6v12M12 6v12M17 6v12" opacity="0.55" />
-        </svg>
-      );
-    case "ratings":
-      return (
-        <svg {...props}>
-          <path d="M12 3.5l2.2 4.5 5 .7-3.6 3.5.9 5L12 15.4 7.5 17.2l.9-5L4.8 8.7l5-.7L12 3.5z" />
-        </svg>
-      );
-    case "search":
-      return (
-        <svg {...props}>
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="M16 16l4 4" />
-        </svg>
-      );
-    case "filter":
-      return (
-        <svg {...props}>
-          <path d="M4 7h16M7 12h10M10 17h4" />
-        </svg>
-      );
-    case "local":
-      return (
-        <svg {...props}>
-          <path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z" />
-        </svg>
-      );
-    case "similar":
-      return (
-        <svg {...props}>
-          <circle cx="7" cy="12" r="3" />
-          <circle cx="17" cy="8" r="3" />
-          <circle cx="17" cy="16" r="3" />
-          <path d="M9.7 10.6L14.3 8.8M9.7 13.4L14.3 15.2" />
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M15.2 8.8l-1.9 4.4-4.4 1.9 1.9-4.4z" {...ACCENT} />
         </svg>
       );
     case "watch":
+      // Play inside a ring, with the ring left open at the top like a dial.
       return (
         <svg {...props}>
-          <rect x="5" y="4" width="14" height="16" rx="1.5" />
-          <path d="M9 8h6M9 12h6M9 16h4" />
+          <path d="M12 3.5a8.5 8.5 0 1 1-6 2.5" />
+          <path d="M10.3 9.2l4.6 2.8-4.6 2.8z" {...ACCENT} />
         </svg>
       );
-    case "close":
+    case "foryou":
+      // Sparkline rising to a marked point: "tuned for you".
       return (
         <svg {...props}>
-          <path d="M6 6l12 12M18 6L6 18" />
-        </svg>
-      );
-    case "plus":
-      return (
-        <svg {...props}>
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      );
-    case "check":
-      return (
-        <svg {...props}>
-          <path d="M5 12.5l4.5 4.5L19 7" />
-        </svg>
-      );
-    case "logout":
-      return (
-        <svg {...props}>
-          <path d="M10 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4" />
-          <path d="M14 12H8M14 12l3-3M14 12l3 3" />
-        </svg>
-      );
-    case "user":
-      return (
-        <svg {...props}>
-          <circle cx="12" cy="9" r="3.5" />
-          <path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5" />
-        </svg>
-      );
-    case "arrow":
-      return (
-        <svg {...props}>
-          <path d="M5 12h14M13 6l6 6-6 6" />
-        </svg>
-      );
-    case "spark":
-      return (
-        <svg {...props}>
-          <path d="M12 3v4M12 17v4M4.5 6.5l2.8 2.8M16.7 14.7l2.8 2.8M3 12h4M17 12h4M4.5 17.5l2.8-2.8M16.7 9.3l2.8-2.8" />
+          <path d="M4 16.5l4-4.5 3.2 3 5.3-6.5" />
+          <circle cx="17.2" cy="8.2" r="2.1" {...ACCENT} />
         </svg>
       );
     case "stack":
+      // Layered shelves.
       return (
         <svg {...props}>
-          <path d="M12 4l8 4-8 4-8-4 8-4z" />
-          <path d="M4 12l8 4 8-4M4 16l8 4 8-4" opacity="0.6" />
+          <path d="M12 4l7.5 3.6L12 11.2 4.5 7.6z" />
+          <path d="M4.5 12L12 15.6 19.5 12" />
+          <path d="M4.5 16.4L12 20l7.5-3.6" opacity="0.5" />
         </svg>
       );
     case "chart":
       return (
         <svg {...props}>
-          <path d="M4 20V6M10 20v-8M16 20v-5M22 20H2" />
-          <circle cx="10" cy="9" r="1.4" fill="currentColor" stroke="none" />
+          <path d="M4 19.5V4.5M4 19.5h16" />
+          <path d="M8 19.5v-5M12.5 19.5v-9M17 19.5v-3.5" />
+          <circle cx="12.5" cy="10.5" r="1.6" {...ACCENT} />
         </svg>
       );
     case "calendar":
       return (
         <svg {...props}>
-          <rect x="4" y="5" width="16" height="16" rx="2" />
-          <path d="M4 10h16M9 3v4M15 3v4" />
+          <rect x="3.75" y="5.75" width="16.5" height="14.5" rx="2.5" />
+          <path d="M3.75 10.25h16.5M8.5 3.5v4M15.5 3.5v4" />
+          <rect x="7.25" y="13" width="3" height="3" rx="0.75" {...ACCENT} />
+        </svg>
+      );
+    case "broadcast":
+      // Transmitting: a source with two arcs each side.
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="2.1" {...ACCENT} />
+          <path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 15.4a4.8 4.8 0 0 0 0-6.8" />
+          <path d="M5.9 5.9a8.6 8.6 0 0 0 0 12.2M18.1 18.1a8.6 8.6 0 0 0 0-12.2" opacity="0.45" />
+        </svg>
+      );
+    case "shelf":
+      // Books standing on a shelf, one leaning.
+      return (
+        <svg {...props}>
+          <path d="M4 19.5h16" />
+          <path d="M6.5 19.5V8.5h3v11M12 19.5V6.5h3v13" />
+          <path d="M17.6 19.5l1.7-8.4 2 .4-1.6 8" opacity="0.75" />
+        </svg>
+      );
+    case "ratings":
+      // Star, single filled shape: a rating is the one thing you assert.
+      return (
+        <svg {...props}>
+          <path
+            d="M12 4.2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.9l5.4-.8z"
+            strokeLinejoin="round"
+          />
         </svg>
       );
     case "friends":
       return (
         <svg {...props}>
-          <circle cx="9" cy="9" r="3" />
-          <path d="M3 19c1.2-3 3.4-4.5 6-4.5s4.8 1.5 6 4.5" />
-          <path d="M16 7.2a3 3 0 0 1 0 5.6M18 19c-.4-1.6-1-2.9-1.8-3.9" opacity="0.6" />
+          <circle cx="9.5" cy="8.75" r="3.25" />
+          <path d="M3.5 19.5c.9-3.2 3.2-4.9 6-4.9s5.1 1.7 6 4.9" />
+          <path d="M16.4 6.2a3.25 3.25 0 0 1 0 5.1M17.5 15.1c1.4.9 2.4 2.4 3 4.4" opacity="0.55" />
         </svg>
       );
-    case "gear":
+
+    // ----------------------------------------------------------------- actions
+    case "search":
       return (
         <svg {...props}>
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1" />
+          <circle cx="10.75" cy="10.75" r="6.25" />
+          <path d="M15.4 15.4l4.1 4.1" />
         </svg>
       );
-    case "play":
+    case "filter":
       return (
         <svg {...props}>
-          <polygon points="8,5 19,12 8,19" fill="currentColor" stroke="none" />
+          <path d="M4 6.5h16M7 12h10M10 17.5h4" />
+        </svg>
+      );
+    case "plus":
+      return (
+        <svg {...props}>
+          <path d="M12 5.5v13M5.5 12h13" />
+        </svg>
+      );
+    case "check":
+      return (
+        <svg {...props}>
+          <path d="M5 12.5l4.5 4.5L19 7.5" />
+        </svg>
+      );
+    case "close":
+      return (
+        <svg {...props}>
+          <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
         </svg>
       );
     case "more":
       return (
         <svg {...props}>
-          <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
-          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-          <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="6" cy="12" r="1.5" {...ACCENT} />
+          <circle cx="12" cy="12" r="1.5" {...ACCENT} />
+          <circle cx="18" cy="12" r="1.5" {...ACCENT} />
         </svg>
       );
-    case "dice":
+    case "arrow":
       return (
         <svg {...props}>
-          <rect x="4" y="4" width="16" height="16" rx="3" />
-          <circle cx="9" cy="9" r="1.4" fill="currentColor" stroke="none" />
-          <circle cx="15" cy="15" r="1.4" fill="currentColor" stroke="none" />
-          <circle cx="15" cy="9" r="1.4" fill="currentColor" stroke="none" />
+          <path d="M4.5 12h14M13 6.5l5.5 5.5-5.5 5.5" />
         </svg>
       );
-    case "server":
+    case "play":
       return (
         <svg {...props}>
-          <rect x="3" y="4" width="18" height="7" rx="2" />
-          <rect x="3" y="13" width="18" height="7" rx="2" />
-          <path d="M7 7.5h.01M7 16.5h.01" />
+          <path d="M8 5.5l11 6.5-11 6.5z" strokeLinejoin="round" />
         </svg>
       );
     case "download":
       return (
         <svg {...props}>
-          <path d="M12 4v10M8 11l4 4 4-4M5 19h14" />
+          <path d="M12 4v10.5M7.5 10.5L12 15l4.5-4.5" />
+          <path d="M4.5 17.5v1a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1" />
         </svg>
       );
-    default:
+    case "dice":
+      // Chance: the pips are the accent.
       return (
         <svg {...props}>
-          <circle cx="12" cy="12" r="8" />
+          <rect x="4.25" y="4.25" width="15.5" height="15.5" rx="3.5" />
+          <circle cx="9" cy="9" r="1.35" {...ACCENT} />
+          <circle cx="15" cy="15" r="1.35" {...ACCENT} />
+          <circle cx="12" cy="12" r="1.35" {...ACCENT} />
+        </svg>
+      );
+    case "spark":
+      // Four-point star for anything "generated".
+      return (
+        <svg {...props}>
+          <path d="M12 3.8c.7 4.2 2.2 5.7 6.4 6.4-4.2.7-5.7 2.2-6.4 6.4-.7-4.2-2.2-5.7-6.4-6.4 4.2-.7 5.7-2.2 6.4-6.4z" />
+          <circle cx="18.4" cy="18" r="1.5" {...ACCENT} />
+        </svg>
+      );
+    case "similar":
+      return (
+        <svg {...props}>
+          <circle cx="9" cy="12" r="5.25" />
+          <circle cx="15" cy="12" r="5.25" opacity="0.55" />
+        </svg>
+      );
+    case "link":
+      return (
+        <svg {...props}>
+          <path d="M10.2 13.8a3.9 3.9 0 0 0 5.6 0l2.6-2.6a3.9 3.9 0 0 0-5.6-5.6l-1.2 1.2" />
+          <path d="M13.8 10.2a3.9 3.9 0 0 0-5.6 0l-2.6 2.6a3.9 3.9 0 0 0 5.6 5.6l1.2-1.2" />
+        </svg>
+      );
+
+    // ------------------------------------------------------------------ system
+    case "user":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="8.75" r="3.5" />
+          <path d="M5 19.5c1.1-3.4 3.7-5.1 7-5.1s5.9 1.7 7 5.1" />
+        </svg>
+      );
+    case "gear":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="3.1" />
+          <path d="M12 3.6v2.3M12 18.1v2.3M20.4 12h-2.3M5.9 12H3.6M17.9 6.1l-1.6 1.6M7.7 16.3l-1.6 1.6M17.9 17.9l-1.6-1.6M7.7 7.7L6.1 6.1" />
+        </svg>
+      );
+    case "logout":
+      return (
+        <svg {...props}>
+          <path d="M14.5 4.5h-7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h7" />
+          <path d="M11.5 12h8M16.5 8.5l3.5 3.5-3.5 3.5" />
+        </svg>
+      );
+    case "server":
+      return (
+        <svg {...props}>
+          <rect x="3.75" y="4.75" width="16.5" height="6" rx="2" />
+          <rect x="3.75" y="13.25" width="16.5" height="6" rx="2" />
+          <circle cx="7.75" cy="7.75" r="1.25" {...ACCENT} />
+          <circle cx="7.75" cy="16.25" r="1.25" {...ACCENT} />
+        </svg>
+      );
+    case "local":
+      // A machine with a pulse: this instance, running here.
+      return (
+        <svg {...props}>
+          <rect x="3.5" y="5" width="17" height="11" rx="2.25" />
+          <path d="M8.5 20h7" />
+          <path d="M7 11h2.2l1.3-2.2 1.8 4 1.4-1.8H17" {...{ fill: "none" }} />
+        </svg>
+      );
+
+    default:
+      // A visible placeholder beats a silent gap when a name is misspelled.
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="8" opacity="0.4" />
         </svg>
       );
   }

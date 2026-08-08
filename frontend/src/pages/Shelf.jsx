@@ -233,7 +233,7 @@ export function Library() {
           }
         />
       ) : (
-        <section className="tile-grid">
+        <section className="tile-grid stagger">
           {sorted.map((r, i) =>
             r.anime ? (
               <AnimeCard

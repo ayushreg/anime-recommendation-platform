@@ -50,8 +50,7 @@ export function Seasons() {
           <p className="eyebrow">Seasons</p>
           <h1>Season calendar</h1>
           <p className="lede">
-            Built from the season and year fields in the offline catalog, so it works with no
-            network at all.
+            Every season in the catalog, by year. For what is airing right now, try Upcoming.
           </p>
         </div>
         {picked && (
@@ -99,7 +98,7 @@ export function Seasons() {
           <h2 className="section-title">
             {SEASON_LABELS[picked.season]} {picked.year}
           </h2>
-          <section className="tile-grid">
+          <section className="tile-grid stagger">
             {titles.map((anime, i) => (
               <AnimeCard
                 key={anime.id}

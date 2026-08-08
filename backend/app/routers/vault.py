@@ -8,14 +8,12 @@ public AniList username if this machine happens to have internet.
 from __future__ import annotations
 
 import json
-import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import require_user
@@ -23,8 +21,8 @@ from app.database import get_db
 from app.models import Anime, Collection, CollectionItem, Note, Rating, User, WatchlistItem
 from app.schemas import ImportResultOut, VaultExportOut
 from app.services import events
-from app.services.cache import cache_delete_pattern
-from app.services.library import upsert_library
+from app.services.importer import apply_entries as _apply_entries
+from app.services.importer import match_anime as _match_anime
 
 router = APIRouter(prefix="/api/vault", tags=["vault"])
 
@@ -71,10 +69,6 @@ class VaultImportIn(BaseModel):
 
 class AniListImportIn(BaseModel):
     username: str = Field(min_length=2, max_length=60)
-
-
-def _norm(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
 
 
 @router.get("/export", response_model=VaultExportOut)
@@ -135,99 +129,6 @@ def export_vault(user: User = Depends(require_user), db: Session = Depends(get_d
             for c in collections
         ],
         notes=[{"title": a.title, "body": n.body, "is_shared": n.is_shared} for n, a in notes],
-    )
-
-
-def _match_anime(db: Session, mal_id: int | None, title: str | None) -> Anime | None:
-    if mal_id:
-        row = db.query(Anime).filter(Anime.mal_id == mal_id).first()
-        if row:
-            return row
-    if not title:
-        return None
-    row = db.query(Anime).filter(func.lower(Anime.title) == title.lower()).first()
-    if row:
-        return row
-    row = db.query(Anime).filter(func.lower(Anime.title_english) == title.lower()).first()
-    if row:
-        return row
-    normalized = _norm(title)
-    if len(normalized) < 4:
-        return None
-    return (
-        db.query(Anime)
-        .filter(Anime.title.ilike(f"%{title[:60]}%"))
-        .order_by(Anime.score.desc().nullslast())
-        .first()
-    )
-
-
-def _apply_entries(
-    db: Session,
-    user_id: int,
-    entries: list[dict],
-    *,
-    overwrite: bool,
-) -> ImportResultOut:
-    matched = 0
-    ratings_imported = 0
-    library_imported = 0
-    skipped = 0
-    notes: list[str] = []
-
-    for entry in entries:
-        anime = _match_anime(db, entry.get("mal_id"), entry.get("title"))
-        if not anime:
-            skipped += 1
-            if len(notes) < 12 and entry.get("title"):
-                notes.append(f"No catalog match for {entry['title']}")
-            continue
-        matched += 1
-
-        status_value = entry.get("status")
-        progress = entry.get("progress")
-        if status_value:
-            item = upsert_library(
-                db,
-                user_id,
-                anime.id,
-                status_value=status_value,
-                progress=int(progress or 0) if progress is not None else None,
-            )
-            if entry.get("rewatches"):
-                item.rewatches = int(entry["rewatches"])
-            if entry.get("watch_seconds"):
-                item.watch_seconds = int(entry["watch_seconds"])
-            library_imported += 1
-
-        score = entry.get("score")
-        if score:
-            try:
-                score = float(score)
-            except (TypeError, ValueError):
-                score = None
-        if score and 1 <= score <= 10:
-            existing = (
-                db.query(Rating)
-                .filter(Rating.user_id == user_id, Rating.anime_id == anime.id)
-                .first()
-            )
-            if existing and not overwrite:
-                continue
-            if existing:
-                existing.score = score
-            else:
-                db.add(Rating(user_id=user_id, anime_id=anime.id, score=score))
-            ratings_imported += 1
-
-    db.commit()
-    cache_delete_pattern(f"recs:user:{user_id}:*")
-    return ImportResultOut(
-        matched=matched,
-        ratings_imported=ratings_imported,
-        library_imported=library_imported,
-        skipped=skipped,
-        notes=notes,
     )
 
 
@@ -344,7 +245,8 @@ def import_anilist(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    """Optional network path. Public lists only, no token, fails politely offline."""
+    """One-shot import of a public list. For an account that keeps syncing, use
+    /api/connect/accounts instead."""
     try:
         with httpx.Client(timeout=20.0) as client:
             resp = client.post(
@@ -354,7 +256,7 @@ def import_anilist(
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail="Could not reach AniList from this machine. Kura stays usable offline.",
+            detail="Could not reach AniList. Check this machine's connection and try again.",
         ) from exc
 
     if resp.status_code >= 400:

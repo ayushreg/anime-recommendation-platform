@@ -1,9 +1,6 @@
 """Unit tests for the pure logic: no database, no Redis, no network."""
 
-import os
-
-os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+# Database and flag environment come from conftest.py.
 
 from datetime import datetime, timedelta, timezone
 

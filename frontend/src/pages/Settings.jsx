@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Icon } from "../icons";
 import { Shell } from "../components/Shell";
 import { Toast, useToast } from "../components/Toast";
+import { relativeDay } from "../lib/format";
 import { usePrefs } from "../lib/prefs";
 import { sfx } from "../lib/sound";
 
@@ -22,12 +23,17 @@ function Row({ label, hint, children }) {
 
 export function Settings() {
   const { token, user, loading } = useAuth();
-  const { prefs, flags, save } = usePrefs();
+  const { prefs, flags, save, flag } = usePrefs();
   const [hidden, setHidden] = useState([]);
   const [aniList, setAniList] = useState("");
   const [busy, setBusy] = useState("");
+  const [accounts, setAccounts] = useState([]);
+  const [linkForm, setLinkForm] = useState({ provider: "anilist", username: "" });
+  const [liveStatus, setLiveStatus] = useState(null);
   const fileRef = useRef(null);
   const toast = useToast();
+
+  const liveOn = flag("live_data", true);
 
   useEffect(() => {
     if (!token) return;
@@ -35,6 +41,16 @@ export function Settings() {
       .then(setHidden)
       .catch(() => setHidden([]));
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !liveOn) return;
+    api("/api/connect/accounts", { token })
+      .then(setAccounts)
+      .catch(() => setAccounts([]));
+    api("/api/live/status", { token })
+      .then(setLiveStatus)
+      .catch(() => setLiveStatus(null));
+  }, [token, liveOn]);
 
   if (loading) {
     return (
@@ -132,6 +148,53 @@ export function Settings() {
     } finally {
       setBusy("");
     }
+  }
+
+  async function linkAccount(e) {
+    e.preventDefault();
+    if (!linkForm.username.trim()) return;
+    setBusy("link");
+    try {
+      const { account, result } = await api("/api/connect/accounts", {
+        method: "POST",
+        token,
+        body: { provider: linkForm.provider, username: linkForm.username.trim() },
+      });
+      setAccounts((prev) => [...prev.filter((a) => a.provider !== account.provider), account]);
+      setLinkForm((f) => ({ ...f, username: "" }));
+      sfx.complete();
+      toast.say(
+        `${account.provider_label} linked: ${result.matched} matched, ${result.skipped} with no catalog match`
+      );
+    } catch (err) {
+      toast.say(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function syncAccount(provider) {
+    setBusy(`sync-${provider}`);
+    try {
+      const { account, result } = await api(`/api/connect/accounts/${provider}/sync`, {
+        method: "POST",
+        token,
+      });
+      setAccounts((prev) => prev.map((a) => (a.provider === provider ? account : a)));
+      toast.say(`Synced: ${result.matched} matched, ${result.skipped} skipped`);
+    } catch (err) {
+      // The account row carries the reason now, so re-read it to show the why.
+      api("/api/connect/accounts", { token }).then(setAccounts).catch(() => {});
+      toast.say(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function unlinkAccount(provider) {
+    await api(`/api/connect/accounts/${provider}`, { method: "DELETE", token });
+    setAccounts((prev) => prev.filter((a) => a.provider !== provider));
+    toast.say("Unlinked. Everything it imported stays in your vault.");
   }
 
   return (
@@ -243,6 +306,100 @@ export function Settings() {
       </section>
 
       <section className="insight-block">
+        <h2>Connected accounts</h2>
+        <p className="micro">
+          Kura stores a username and reads a public list. There is no password field here and
+          no way for this to write anything back to a tracker. Unlinking leaves everything it
+          imported in your vault.
+        </p>
+
+        {!liveOn ? (
+          <p className="micro" style={{ marginTop: "0.7rem" }}>
+            An operator has switched the <strong>live_data</strong> flag off for this
+            instance. Turn it back on from the <Link to="/admin">instance dashboard</Link>.
+          </p>
+        ) : (
+          <>
+            {accounts.length > 0 && (
+              <div style={{ marginTop: "0.8rem" }}>
+                {accounts.map((a) => (
+                  <div className="linked-account" key={a.provider}>
+                    <span className={`sync-dot ${a.last_status}`} aria-hidden="true" />
+                    <div className="grow">
+                      <strong>
+                        {a.provider_label} · {a.external_username}
+                      </strong>
+                      <p className="micro">
+                        {a.last_status === "ok" &&
+                          `Synced ${relativeDay(a.last_synced_at)} · ${a.last_detail}`}
+                        {a.last_status === "error" && a.last_detail}
+                        {a.last_status === "never" && "Not synced yet"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost-btn tiny"
+                      onClick={() => syncAccount(a.provider)}
+                      disabled={busy === `sync-${a.provider}`}
+                    >
+                      {busy === `sync-${a.provider}` ? "Syncing..." : "Sync now"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-btn tiny danger"
+                      onClick={() => unlinkAccount(a.provider)}
+                    >
+                      Unlink
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form className="setting-row" onSubmit={linkAccount}>
+              <div>
+                <strong>Link a list</strong>
+                <p className="micro">
+                  Just a public username, on either service. Nothing is written back, and
+                  your list stays yours: unlinking keeps everything it imported.
+                </p>
+              </div>
+              <div className="setting-control">
+                <select
+                  value={linkForm.provider}
+                  onChange={(e) => setLinkForm((f) => ({ ...f, provider: e.target.value }))}
+                >
+                  <option value="anilist">AniList</option>
+                  <option value="mal">MyAnimeList</option>
+                </select>
+                <input
+                  value={linkForm.username}
+                  onChange={(e) => setLinkForm((f) => ({ ...f, username: e.target.value }))}
+                  placeholder="username"
+                />
+                <button className="btn compact" type="submit" disabled={busy === "link"}>
+                  <Icon name="link" size={16} /> {busy === "link" ? "Linking..." : "Link"}
+                </button>
+              </div>
+            </form>
+
+            {liveStatus && (
+              <p className="micro live-stamp">
+                <Icon name="broadcast" size={13} />
+                {liveStatus.refreshed_at
+                  ? `Airing data last checked ${relativeDay(liveStatus.refreshed_at)} · ${
+                      liveStatus.releasing
+                    } airing, ${liveStatus.upcoming} upcoming`
+                  : "No airing data pulled yet"}
+                {" · "}
+                <Link to="/upcoming">Open Upcoming</Link>
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="insight-block">
         <h2>Your data</h2>
         <Row label="Export everything" hint="Ratings, shelf, lists, and notes as one readable JSON file.">
           <button type="button" className="btn compact" onClick={exportVault} disabled={busy === "export"}>
@@ -271,8 +428,7 @@ export function Settings() {
           <div>
             <strong>Import a public AniList profile</strong>
             <p className="micro">
-              Optional and network dependent. If this machine is offline the rest of Kura carries on
-              without it.
+              A one-off copy. To keep a list in sync, link the account above instead.
             </p>
           </div>
           <div className="setting-control">

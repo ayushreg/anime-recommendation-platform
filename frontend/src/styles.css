@@ -94,6 +94,7 @@ img { max-width: 100%; display: block; }
 .rail-nav { display: grid; gap: 0.3rem; }
 
 .rail-nav a {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -1611,17 +1612,287 @@ kbd {
 .detail-hero[style*="--tint-h"] .aka { color: hsl(var(--tint-h, 190), var(--tint-s, 70%), 70%); }
 
 
+/* =====================================================================
+   Motion
+   =====================================================================
+   Four jobs only: tell you the page changed, let a grid arrive without
+   popping, confirm a press, and hold a shape while data loads. Anything
+   that moves without doing one of those is noise, and the whole layer is
+   switched off wholesale under prefers-reduced-motion at the end.
+
+   Durations sit between 140ms and 420ms. Below 140 reads as a glitch,
+   above 420 reads as waiting.
+   ===================================================================== */
+
+:root {
+  /* Decelerate: fast out of the gate, gentle arrival. The default for
+     anything entering the screen. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* A little overshoot, for things that should feel physical. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur-mid: 240ms;
+  --dur-slow: 420ms;
+}
+
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes tileIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes shimmer {
+  from { background-position: -180% 0; }
+  to   { background-position: 180% 0; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.86); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Route content. Keyed on pathname in Shell so it replays per navigation. */
+.workspace-main > * {
+  animation: pageIn var(--dur-mid) var(--ease-out) both;
+}
+
+/* Grid arrival. The delay is capped at ten steps: beyond that the last
+   card waits long enough to feel broken, and nobody perceives the order
+   of item 30 anyway. */
+.stagger > * {
+  animation: tileIn var(--dur-slow) var(--ease-out) both;
+}
+.stagger > *:nth-child(1)  { animation-delay: 0ms; }
+.stagger > *:nth-child(2)  { animation-delay: 22ms; }
+.stagger > *:nth-child(3)  { animation-delay: 44ms; }
+.stagger > *:nth-child(4)  { animation-delay: 66ms; }
+.stagger > *:nth-child(5)  { animation-delay: 88ms; }
+.stagger > *:nth-child(6)  { animation-delay: 110ms; }
+.stagger > *:nth-child(7)  { animation-delay: 132ms; }
+.stagger > *:nth-child(8)  { animation-delay: 154ms; }
+.stagger > *:nth-child(9)  { animation-delay: 176ms; }
+.stagger > *:nth-child(n+10) { animation-delay: 198ms; }
+
+/* Sidebar: a rail that slides between items rather than blinking on. */
+.rail-nav { position: relative; }
+
+.rail-group { display: grid; gap: 0.1rem; }
+.rail-group + .rail-group { margin-top: 0.85rem; }
+
+.rail-group-label {
+  margin: 0 0 0.2rem 0.78rem;
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hush);
+}
+
+.rail-nav a::before {
+  content: "";
+  position: absolute;
+  left: -0.35rem;
+  /* Centred with margin rather than translate, so the transform property is
+     free for the scale that actually animates. */
+  top: 50%;
+  margin-top: -0.55rem;
+  width: 3px;
+  height: 1.1rem;
+  border-radius: 0 3px 3px 0;
+  background: var(--signal);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur-mid) var(--ease-spring);
+}
+
+.rail-nav a.active::before { transform: scaleY(1); }
+
+.rail-nav a .icon {
+  transition: transform var(--dur-mid) var(--ease-spring);
+}
+.rail-nav a:hover .icon { transform: translateX(2px); }
+.rail-nav a.active .icon { transform: scale(1.08); }
+
+/* Press feedback. Buttons that move under the finger feel connected to it. */
+.btn, .ghost-btn, .chip, .icon-btn {
+  transition:
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+.btn:active, .ghost-btn:active, .icon-btn:active { transform: translateY(1px) scale(0.985); }
+.chip:active { transform: scale(0.96); }
+
+/* Chips settle into their active state instead of snapping. */
+.chip.active { animation: popIn var(--dur-fast) var(--ease-spring); }
+
+/* Loading placeholders: hold the layout so nothing jumps when data lands. */
+.skeleton {
+  border-radius: 0.65rem;
+  background:
+    linear-gradient(
+      90deg,
+      var(--surface-2) 25%,
+      rgba(255, 255, 255, 0.07) 37%,
+      var(--surface-2) 50%
+    );
+  background-size: 280% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem 0.8rem;
+  margin-top: 1.1rem;
+}
+
+.skeleton-card { display: grid; gap: 0.5rem; }
+.skeleton-card .skeleton.poster { aspect-ratio: 16 / 10; }
+.skeleton-card .skeleton.line { height: 0.72rem; }
+.skeleton-card .skeleton.line.short { width: 55%; }
+
+/* Toasts arrive from the corner they live in. */
+.toast { animation: tileIn var(--dur-mid) var(--ease-out) both; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation: none !important;
     transition: none !important;
   }
+  /* The indicator is drawn with a transform, so it needs an explicit
+     resting state once transitions are gone. */
+  .rail-nav a.active::before { transform: scaleY(1); }
 }
 
 @media (max-width: 960px) {
   .feature-hero { grid-template-columns: 1fr; min-height: 0; }
   .feature-hero-mascot { display: none; }
 }
+
+/* ------------------------------------------------------------ upcoming */
+/* Wider tiles than .tile-grid: every card carries a countdown and a reason,
+   so they need room to say it without the poster shrinking to a thumbnail. */
+.airing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem 0.8rem;
+  margin-top: 1.1rem;
+}
+
+.airing-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.airing-poster {
+  position: relative;
+  display: block;
+  border-radius: 0.65rem;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--line);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.airing-card:hover .airing-poster {
+  transform: translateY(-3px);
+  box-shadow: 0 0 0 1px rgba(61, 231, 255, 0.4), 0 14px 30px rgba(0, 0, 0, 0.45);
+}
+
+.airing-poster img { width: 100%; height: 100%; object-fit: cover; }
+
+.airing-poster::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 55%;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+  pointer-events: none;
+}
+
+/* The countdown is the whole point of the card, so it sits on the art. */
+.airing-pill {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 1;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  background: var(--cyan);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+/* Under a day out gets the signal colour, so "tonight" reads at a glance. */
+.airing-pill.imminent {
+  background: var(--signal);
+  color: var(--chalk);
+}
+
+.airing-body { padding: 0.5rem 0.1rem 0; display: grid; gap: 0.25rem; }
+
+.airing-body h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.airing-body h3 a:hover { color: var(--cyan); }
+
+.airing-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.72rem;
+  color: var(--cyan);
+  justify-self: start;
+}
+
+.live-stamp {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.7rem 0 0;
+  color: var(--hush);
+}
+
+.live-stamp.stale { color: var(--gold); }
+
+.linked-account {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.linked-account:last-child { border-bottom: 0; }
+.linked-account .grow { flex: 1; min-width: 10rem; }
+
+.sync-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--hush);
+  flex: none;
+}
+
+.sync-dot.ok { background: var(--cyan); }
+.sync-dot.error { background: var(--signal); }
 
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 1fr; }

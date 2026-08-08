@@ -20,7 +20,7 @@ FastAPI  ── Redis (response cache, rate limits, cache hit counters)
 
 | Table | Holds |
 |-------|-------|
-| `anime` | Catalog, plus `season`, `duration_minutes`, `franchise_key` |
+| `anime` | Catalog, plus `season`, `duration_minutes`, `franchise_key`, `catalog_source` |
 | `users` | Accounts, plus a short `friend_code` |
 | `ratings` | Scores with `created_at` and `updated_at` for time decay |
 | `watchlist` | Status, progress, `watch_seconds`, `rewatches`, `is_rewatching`, `completed_at` |
@@ -33,6 +33,8 @@ FastAPI  ── Redis (response cache, rate limits, cache hit counters)
 | `notes` | Private by default, optional share flag |
 | `episode_markers` | User editable intro and outro timestamps |
 | `friendships`, `activity_events` | Local social graph and feed |
+| `airing_entries` | One row per title with a clock on it: status, next episode + exact UTC instant, start and end dates, source popularity, `refreshed_at` |
+| `linked_accounts` | A username on another tracker, per provider, plus the outcome of the last sync. No secrets: read-only by construction |
 | `search_queries` | Aggregated counter for the operator dashboard |
 
 New columns land in `app/migrate.py`, which is idempotent and runs on every boot
@@ -82,6 +84,38 @@ of runtime it advances progress and subtracts. Runtime comes from
 A second live session for the same title on a different device sets `conflict`
 on the response so the interface can say so. Resolution is last write wins.
 
+## Live data (opt-in)
+
+`app/services/live.py` is the only module in the codebase that opens a socket to
+the internet, and it is gated behind the `live_data` flag, which ships off.
+
+```
+AniList GraphQL ─┐
+                 ├─ services/live.py ─ normalize ─ services/ingest.py ─ Postgres
+Jikan (MAL) ─────┘   (raises LiveUnavailable,      (fills blanks only)      │
+                      never leaks httpx errors)                    routers/live.py
+                                                                    (reads Postgres)
+```
+
+- **Fetch and read are separate.** `POST /api/live/refresh` writes; the grids only
+  ever query Postgres. Once a refresh lands, every view works offline, and the
+  response carries `refreshed_at` plus a `stale` flag past 24 hours rather than
+  presenting an old copy as current.
+- **Ingest fills blanks, never overwrites.** `services/ingest.FILLABLE` lists the
+  columns a refresh may touch, and only when the existing value is empty. The
+  ranking columns (`score`, `scored_by`, `popularity`) are not on that list, so a
+  nightly job cannot quietly undo the ordering work. Titles new to the catalog
+  arrive with `catalog_source='live'` and a null score, which keeps anything
+  unaired out of every `best_first()` query without a special case.
+- **`idMal` is the join key.** Rows without one are dropped rather than matched on
+  title text, which is what stops the refresh inventing duplicates.
+- **Errors are UI copy.** `LiveUnavailable` carries a sentence written for a
+  person, because the settings page prints it verbatim. AniList's own body text
+  is preferred over its status code, so "User not found" and "Private User" stay
+  distinguishable instead of collapsing into "404".
+- Cache keys: `live:media:{status}:{limit}`, TTL `live_cache_ttl_seconds` (6h).
+  Dates are serialised on the way into Redis and revived on the way out.
+
 ## Caching
 
 - Keys: `search:v3:{q}:{limit}`, `recs:user:{id}:v4:{...}`, `similar:{id}:{limit}`
@@ -98,7 +132,7 @@ on the response so the interface can say so. Resolution is last write wins.
 | `db` | PostgreSQL 16 |
 | `redis` | Cache, rate limits, cache stats |
 | `api` | Seed, migrate, FastAPI |
-| `worker` | Periodic TF-IDF and SVD refit |
+| `worker` | Periodic TF-IDF and SVD refit; live refresh and account re-sync on a longer interval when `live_data` is on |
 | `frontend` | Static React build behind nginx |
 
 ## Feature flags

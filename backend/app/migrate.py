@@ -22,6 +22,10 @@ COLUMN_ADDITIONS: dict[str, dict[str, tuple[str, str]]] = {
         "season": ("VARCHAR(16)", "VARCHAR(16)"),
         "duration_minutes": ("INTEGER", "INTEGER"),
         "franchise_key": ("VARCHAR(160)", "VARCHAR(160)"),
+        "catalog_source": (
+            "VARCHAR(16) DEFAULT 'offline'",
+            "VARCHAR(16) DEFAULT 'offline'",
+        ),
     },
     "ratings": {
         "updated_at": ("TIMESTAMPTZ DEFAULT NOW()", "DATETIME"),
@@ -42,6 +46,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_anime_season ON anime (season)",
     "CREATE INDEX IF NOT EXISTS ix_anime_franchise_key ON anime (franchise_key)",
     "CREATE INDEX IF NOT EXISTS ix_impressions_created ON impressions (created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_anime_catalog_source ON anime (catalog_source)",
 ]
 
 BACKFILLS = [
@@ -50,6 +55,7 @@ BACKFILLS = [
     "UPDATE watchlist SET watch_seconds = 0 WHERE watch_seconds IS NULL",
     "UPDATE watchlist SET rewatches = 0 WHERE rewatches IS NULL",
     "UPDATE ratings SET updated_at = created_at WHERE updated_at IS NULL",
+    "UPDATE anime SET catalog_source = 'offline' WHERE catalog_source IS NULL OR catalog_source = ''",
 ]
 
 # Rough per-episode runtimes when the catalog does not carry one.

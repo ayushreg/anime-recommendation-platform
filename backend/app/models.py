@@ -57,6 +57,10 @@ class Anime(Base):
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Normalized franchise slug so sequels and movies group together.
     franchise_key: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    # offline = came from the Manami dump, live = pulled in by a live refresh
+    # because it had not been catalogued yet. Lets the operator page tell the
+    # two apart, and keeps unreleased rows out of taste maths.
+    catalog_source: Mapped[str] = mapped_column(String(16), default="offline", index=True)
 
     ratings: Mapped[list["Rating"]] = relationship(back_populates="anime")
 
@@ -298,6 +302,73 @@ class ActivityEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class AiringEntry(Base):
+    """What a title is doing right now, refreshed from the network.
+
+    The offline catalog knows a title exists but not when episode 12 lands, so
+    this table carries everything that has a clock attached to it. One row per
+    catalog title, rewritten wholesale on each refresh rather than appended to,
+    because a stale countdown is worse than no countdown.
+    """
+
+    __tablename__ = "airing_entries"
+    __table_args__ = (Index("ix_airing_status_next", "airing_status", "next_episode_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    anime_id: Mapped[int] = mapped_column(
+        ForeignKey("anime.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    # releasing | upcoming | finished
+    airing_status: Mapped[str] = mapped_column(String(16), default="upcoming", index=True)
+    next_episode: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Exact UTC instant the next episode airs. AniList is the only source that
+    # gives this; when it is null the UI shows a date, never a fake countdown.
+    next_episode_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    episodes_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Popularity on the source, used to order a season grid that has no scores.
+    source_popularity: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(16), default="anilist")
+    refreshed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    anime: Mapped[Anime] = relationship()
+
+
+class LinkedAccount(Base):
+    """A read-only link to a public list on another tracker.
+
+    Kura stores a username, never a password or a token, and only ever reads.
+    Nothing here can write back to the provider.
+    """
+
+    __tablename__ = "linked_accounts"
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_user_provider"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # mal | anilist
+    provider: Mapped[str] = mapped_column(String(16), index=True)
+    external_username: Mapped[str] = mapped_column(String(80))
+    # Let the worker re-pull this list on its own schedule.
+    auto_sync: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # never | ok | error
+    last_status: Mapped[str] = mapped_column(String(16), default="never")
+    # The provider's own error text when a sync fails, so the UI can say what
+    # actually went wrong instead of "sync failed".
+    last_detail: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    last_matched: Mapped[int] = mapped_column(Integer, default=0)
+    last_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SearchQueryLog(Base):

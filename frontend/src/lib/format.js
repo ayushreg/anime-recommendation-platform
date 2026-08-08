@@ -46,6 +46,55 @@ export function relativeDay(value) {
   return then.toLocaleDateString();
 }
 
+/**
+ * "in 2d 4h", "in 51m", "airing now". Deliberately coarse above a day: nobody
+ * needs the seconds on something eleven days out, and a ticking second hand on
+ * forty cards is a lot of re-renders for no information.
+ */
+export function countdown(seconds) {
+  if (seconds == null) return null;
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) return "airing now";
+  const days = Math.floor(total / 86400);
+  const hrs = Math.floor((total % 86400) / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  if (days > 0) return `in ${days}d ${hrs}h`;
+  if (hrs > 0) return `in ${hrs}h ${mins}m`;
+  return `in ${mins}m`;
+}
+
+/**
+ * Render a bare "YYYY-MM-DD" as that calendar day.
+ *
+ * `new Date("2027-01-01")` is parsed as UTC midnight, so anyone west of
+ * Greenwich renders it as the last day of the previous year. A premiere date
+ * has no time attached, so it should be read in local terms from the start.
+ */
+export function plainDate(value) {
+  if (!value) return null;
+  const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** "Sat 9 Aug, 23:30" in the viewer's own timezone. */
+export function airTime(iso) {
+  if (!iso) return null;
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return null;
+  return when.toLocaleString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function titleInitial(title) {
   return (title || "?").trim().slice(0, 1).toUpperCase();
 }

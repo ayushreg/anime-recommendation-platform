@@ -471,3 +471,75 @@ class ImportResultOut(BaseModel):
     library_imported: int
     skipped: int
     notes: list[str] = Field(default_factory=list)
+
+
+# -------------------------------------------------------------------- live
+
+
+class AiringOut(BaseModel):
+    """A title plus whatever clock is attached to it."""
+
+    anime: AnimeOut
+    airing_status: str
+    next_episode: int | None = None
+    next_episode_at: datetime | None = None
+    # Server-computed so the countdown does not drift with a wrong client clock.
+    seconds_until: int | None = None
+    start_date: date | None = None
+    episodes_total: int | None = None
+    in_library: bool = False
+    library_status: str | None = None
+    # Why this landed on your radar, in the same voice the rec cards use.
+    why: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AiringListOut(BaseModel):
+    total: int
+    items: list[AiringOut]
+    refreshed_at: datetime | None = None
+    stale: bool = False
+
+
+class LiveStatusOut(BaseModel):
+    enabled: bool
+    reachable: bool | None = None
+    detail: str | None = None
+    releasing: int = 0
+    upcoming: int = 0
+    live_titles: int = 0
+    refreshed_at: datetime | None = None
+
+
+class LiveRefreshOut(BaseModel):
+    releasing: dict[str, int] = Field(default_factory=dict)
+    upcoming: dict[str, int] = Field(default_factory=dict)
+    pruned: int = 0
+    refreshed_at: datetime
+
+
+class LinkAccountIn(BaseModel):
+    provider: Literal["mal", "anilist"]
+    username: str = Field(min_length=2, max_length=80)
+    auto_sync: bool = True
+
+
+class LinkedAccountOut(BaseModel):
+    id: int
+    provider: str
+    provider_label: str
+    external_username: str
+    auto_sync: bool
+    last_synced_at: datetime | None = None
+    last_status: str
+    last_detail: str | None = None
+    last_matched: int = 0
+    last_skipped: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class SyncResultOut(BaseModel):
+    account: LinkedAccountOut
+    result: ImportResultOut | None = None

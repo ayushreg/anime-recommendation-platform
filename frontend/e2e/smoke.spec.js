@@ -161,6 +161,10 @@ test.describe("Kura smoke", () => {
       "/collections",
       "/insights",
       "/seasons",
+      // Renders either the airing grid or the flag-is-off empty state. Both
+      // must mount cleanly, since live_data ships off and most runs see the
+      // second one.
+      "/upcoming",
       "/social",
       "/shelf",
       "/library",

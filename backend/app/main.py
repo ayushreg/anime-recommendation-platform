@@ -13,8 +13,10 @@ from app.routers import (
     anime,
     auth,
     collections,
+    connect,
     discovery,
     insights,
+    live,
     prefs,
     recs,
     signals,
@@ -69,6 +71,8 @@ app.include_router(prefs.flags_router)
 app.include_router(social.router)
 app.include_router(admin.router)
 app.include_router(vault.router)
+app.include_router(live.router)
+app.include_router(connect.router)
 
 
 @app.on_event("startup")

@@ -14,5 +14,6 @@
   "admin_panel": true,
   "vault_backup": true,
   "surprise_me": true,
-  "taste_quiz": true
+  "taste_quiz": true,
+  "live_data": true
 }

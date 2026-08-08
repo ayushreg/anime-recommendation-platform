@@ -1,24 +1,30 @@
+# Runs with no setup: `docker compose up`. Everything below has a default.
+# To change a port or a secret, copy .env.example to .env and edit that; you
+# should never need to edit this file.
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: anime
-      POSTGRES_PASSWORD: anime
-      POSTGRES_DB: anime_recs
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-anime}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anime}
+      POSTGRES_DB: ${POSTGRES_DB:-anime_recs}
+    # Deliberately not published to the host. Plenty of machines already have
+    # something on 5432, and nothing outside this network needs it. To poke at
+    # the database: docker compose exec db psql -U anime -d anime_recs
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U anime -d anime_recs"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anime} -d ${POSTGRES_DB:-anime_recs}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -28,12 +34,13 @@ services:
   api:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "${KURA_API_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://anime:anime@db:5432/anime_recs
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anime}:${POSTGRES_PASSWORD:-anime}@db:5432/${POSTGRES_DB:-anime_recs}
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: change-me-in-production-anime-recs-2025
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://frontend:80
+      JWT_SECRET: ${JWT_SECRET:-kura-local-dev-secret}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:${KURA_WEB_PORT:-3000},http://frontend:80
+      KURA_FLAGS: ${KURA_FLAGS:-}
     depends_on:
       db:
         condition: service_healthy
@@ -48,8 +55,9 @@ services:
   worker:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://anime:anime@db:5432/anime_recs
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anime}:${POSTGRES_PASSWORD:-anime}@db:5432/${POSTGRES_DB:-anime_recs}
       REDIS_URL: redis://redis:6379/0
+      KURA_FLAGS: ${KURA_FLAGS:-}
     depends_on:
       db:
         condition: service_healthy
@@ -62,7 +70,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:80"
+      - "${KURA_WEB_PORT:-3000}:80"
     depends_on:
       - api
 

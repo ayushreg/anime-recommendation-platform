@@ -14,6 +14,7 @@ const PAGES = [
   { id: "go-collections", label: "Go to Collections", path: "/collections" },
   { id: "go-insights", label: "Go to Insights", path: "/insights", hint: "g i" },
   { id: "go-seasons", label: "Go to Seasons", path: "/seasons" },
+  { id: "go-upcoming", label: "Go to Upcoming", path: "/upcoming" },
   { id: "go-social", label: "Go to Friends", path: "/social" },
   { id: "go-settings", label: "Go to Settings", path: "/settings" },
   { id: "go-admin", label: "Go to Instance", path: "/admin" },

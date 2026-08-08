@@ -275,7 +275,7 @@ export function Recommendations() {
           }
         />
       ) : (
-        <section className="tile-grid">
+        <section className="tile-grid stagger">
           {rows.map((row, i) => (
             <AnimeCard
               key={row.anime.id}

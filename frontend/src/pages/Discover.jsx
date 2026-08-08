@@ -554,7 +554,7 @@ export function Discover() {
           }
         />
       ) : (
-        <section className="tile-grid">
+        <section className="tile-grid stagger">
           {(browsing ? items : rail?.items || items.map((a) => ({ anime: a, why: null }))).map(
             (row, i) => {
               const anime = row.anime || row;
