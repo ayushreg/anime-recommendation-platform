@@ -7,6 +7,7 @@ import { Shell } from "../components/Shell";
 import { Toast, useToast } from "../components/Toast";
 import { relativeDay } from "../lib/format";
 import { usePrefs } from "../lib/prefs";
+import { ACCENTS, ATMOSPHERES, MOTION, useAppearance } from "../lib/appearance";
 import { sfx } from "../lib/sound";
 
 function Row({ label, hint, children }) {
@@ -24,6 +25,7 @@ function Row({ label, hint, children }) {
 export function Settings() {
   const { token, user, loading } = useAuth();
   const { prefs, flags, save, flag } = usePrefs();
+  const { appearance, patch, reset } = useAppearance();
   const [hidden, setHidden] = useState([]);
   const [aniList, setAniList] = useState("");
   const [busy, setBusy] = useState("");
@@ -254,6 +256,96 @@ export function Settings() {
             onChange={(e) => save({ idle_timeout_seconds: Number(e.target.value) })}
           />
           <span className="micro">seconds</span>
+        </Row>
+      </section>
+
+      <section className="insight-block appearance-block">
+        <div className="appearance-head">
+          <div>
+            <h2>Appearance</h2>
+            <p className="micro">
+              Accents, atmosphere, and motion live on this device so guests get them too.
+            </p>
+          </div>
+          <img src="/mascot-bust.png" alt="" className="appearance-preview" />
+        </div>
+
+        <Row label="Accent" hint="The signal color used for active nav, buttons, and focus rings.">
+          <div className="swatch-row" role="radiogroup" aria-label="Accent color">
+            {ACCENTS.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="radio"
+                aria-checked={appearance.accent === a.id}
+                className={`swatch ${appearance.accent === a.id ? "active" : ""}`}
+                style={{ "--swatch": a.swatch }}
+                title={a.label}
+                onClick={() => patch({ accent: a.id })}
+              >
+                <span className="sr-only">{a.label}</span>
+              </button>
+            ))}
+          </div>
+        </Row>
+
+        <Row label="Atmosphere" hint="How loud the background gradients get.">
+          <div className="choice-grid">
+            {ATMOSPHERES.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className={`choice-card ${appearance.atmosphere === a.id ? "active" : ""}`}
+                onClick={() => patch({ atmosphere: a.id })}
+              >
+                <strong>{a.label}</strong>
+                <span>{a.hint}</span>
+              </button>
+            ))}
+          </div>
+        </Row>
+
+        <Row label="Motion" hint="Overrides OS reduced-motion when you pick Still.">
+          <div className="choice-grid compact">
+            {MOTION.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={`choice-card ${appearance.motion === m.id ? "active" : ""}`}
+                onClick={() => patch({ motion: m.id })}
+              >
+                <strong>{m.label}</strong>
+                <span>{m.hint}</span>
+              </button>
+            ))}
+          </div>
+        </Row>
+
+        <Row label="Show rail mascot" hint="The mood character under Jump to.">
+          <input
+            type="checkbox"
+            checked={appearance.showMascot}
+            onChange={(e) => patch({ showMascot: e.target.checked })}
+          />
+        </Row>
+        <Row label="Show page companions" hint="Character spots on headers and empty states.">
+          <input
+            type="checkbox"
+            checked={appearance.showCompanion}
+            onChange={(e) => patch({ showCompanion: e.target.checked })}
+          />
+        </Row>
+        <Row label="Compact poster grids" hint="Tighter gaps and denser shelves.">
+          <input
+            type="checkbox"
+            checked={appearance.denserCards}
+            onChange={(e) => patch({ denserCards: e.target.checked })}
+          />
+        </Row>
+        <Row label="Reset look">
+          <button type="button" className="ghost-btn" onClick={reset}>
+            Restore defaults
+          </button>
         </Row>
       </section>
 

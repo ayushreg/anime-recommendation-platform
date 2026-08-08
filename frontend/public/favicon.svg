@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kura">
-  <rect width="64" height="64" rx="14" fill="#141820"/>
-  <path d="M18 16h10l10 14 10-14h8L38 34l18 14h-9L38 39 28 48H18l14-14L18 16z" fill="#FF7A3D"/>
-  <path d="M14 48h36" stroke="#E8E4DC" stroke-width="2.5" stroke-linecap="round" opacity="0.35"/>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kura">
+  <rect width="64" height="64" rx="14" fill="#0d1018"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="12" fill="none" stroke="#ff2d6a" stroke-width="3"/>
+  <path fill="#f4f6fb" d="M17 13h11v15.4L41.2 13H54L35.6 32.2 54 51H41.2L28 37.6V51H17V13z"/>
+  <path fill="#3de7ff" d="M22.5 24.2a5.4 5.4 0 1 1 0 10.8 5.4 5.4 0 0 1 0-10.8zm-2.55 9.6h5.1V46.5c0 1.4-1.15 2.55-2.55 2.55s-2.55-1.15-2.55-2.55V33.8z"/>
 </svg>

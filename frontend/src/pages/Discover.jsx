@@ -389,7 +389,7 @@ export function Discover() {
             </div>
           </div>
           <div className="feature-hero-mascot" aria-hidden="true">
-            <img src="/mascot.png" alt="" />
+            <img src="/mascot-celebrate.png" alt="" />
           </div>
         </section>
       )}

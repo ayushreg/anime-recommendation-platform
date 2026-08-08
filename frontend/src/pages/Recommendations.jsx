@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { Icon } from "../icons";
 import { AnimeCard } from "../components/AnimeCard";
-import { EmptyState } from "../components/Mascot";
+import { CharacterSpot, EmptyState } from "../components/Mascot";
 import { Shell } from "../components/Shell";
 import { Toast, useToast } from "../components/Toast";
 import { useGridKeys } from "../lib/useGridKeys";
@@ -127,7 +127,7 @@ export function Recommendations() {
 
   return (
     <Shell mascot={busy ? "thinking" : "idle"}>
-      <section className="panel-head">
+      <section className="panel-head with-spot">
         <div>
           <p className="eyebrow">For You</p>
           <h1>Picks for {user.username}</h1>
@@ -136,9 +136,12 @@ export function Recommendations() {
             {cached ? " · served from Redis" : " · scored just now"}
           </p>
         </div>
-        <button type="button" className="btn" onClick={() => refresh()} disabled={busy}>
-          <Icon name="spark" size={16} /> Refresh
-        </button>
+        <div className="panel-head-actions">
+          <CharacterSpot mood="thinking" caption="Scoring taste" />
+          <button type="button" className="btn" onClick={() => refresh()} disabled={busy}>
+            <Icon name="spark" size={16} /> Refresh
+          </button>
+        </div>
       </section>
 
       <div className="rail-controls wrap">

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { EmptyState } from "../components/Mascot";
+import { CharacterSpot, EmptyState } from "../components/Mascot";
 import { Shell } from "../components/Shell";
 import { Toast, useToast } from "../components/Toast";
 import { Icon } from "../icons";
@@ -181,7 +181,7 @@ export function Upcoming() {
 
   return (
     <Shell mascot={busy ? "searching" : "idle"}>
-      <section className="panel-head">
+      <section className="panel-head with-spot">
         <div>
           <p className="eyebrow">Upcoming</p>
           <h1>What is airing next</h1>
@@ -190,11 +190,14 @@ export function Upcoming() {
             Countdowns are exact to the minute.
           </p>
         </div>
-        {live && (
-          <button type="button" className="btn compact" onClick={refresh} disabled={busy}>
-            <Icon name="broadcast" size={16} /> {busy ? "Checking..." : "Check for updates"}
-          </button>
-        )}
+        <div className="panel-head-actions">
+          <CharacterSpot mood="watching" caption="On the lookout" />
+          {live && (
+            <button type="button" className="btn compact" onClick={refresh} disabled={busy}>
+              <Icon name="broadcast" size={16} /> {busy ? "Checking..." : "Check for updates"}
+            </button>
+          )}
+        </div>
       </section>
 
       {!live ? (

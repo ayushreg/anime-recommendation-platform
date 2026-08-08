@@ -32,12 +32,16 @@ export function Login() {
   return (
     <div className="auth-screen">
       <div className="auth-visual" aria-hidden="true">
+        <img src="/hero-vault.png" alt="" className="auth-hero" />
         <img src="/mascot.png" alt="" className="auth-mascot" />
       </div>
       <form className="auth-card" onSubmit={submit}>
-        <p className="eyebrow">Kura</p>
+        <div className="auth-brand">
+          <img src="/logo.png" alt="" width={48} height={48} />
+          <p className="eyebrow">Kura</p>
+        </div>
         <h1>{mode === "login" ? "Open your vault" : "Create a vault login"}</h1>
-        <p className="hint">Local-first demo · demo@anime.app / demo1234</p>
+        <p className="hint">Demo vault · demo@anime.app / demo1234</p>
         <label>
           Email
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />

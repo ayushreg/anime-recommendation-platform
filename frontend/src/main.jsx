@@ -3,17 +3,20 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./auth.jsx";
+import { AppearanceProvider } from "./lib/appearance.jsx";
 import { PrefsProvider } from "./lib/prefs.jsx";
 import "./styles.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <PrefsProvider>
-          <App />
-        </PrefsProvider>
-      </AuthProvider>
+      <AppearanceProvider>
+        <AuthProvider>
+          <PrefsProvider>
+            <App />
+          </PrefsProvider>
+        </AuthProvider>
+      </AppearanceProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

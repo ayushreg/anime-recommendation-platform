@@ -3,7 +3,7 @@ import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { ContinueCard } from "../components/ContinueCard";
-import { EmptyState } from "../components/Mascot";
+import { CharacterSpot, EmptyState } from "../components/Mascot";
 import { Shell } from "../components/Shell";
 import { Toast, useToast } from "../components/Toast";
 import { WatchHUD } from "../components/WatchHUD";
@@ -97,7 +97,7 @@ export function Watching() {
 
   return (
     <Shell mascot={timer.running ? "watching" : "idle"}>
-      <section className="panel-head">
+      <section className="panel-head with-spot">
         <div>
           <p className="eyebrow">Watching</p>
           <h1>Currently watching</h1>
@@ -106,9 +106,15 @@ export function Watching() {
             you. Nothing plays here. It counts attention, not video.
           </p>
         </div>
-        <span className="head-meta">
-          {rows.length} in progress · {hours(totalSeconds / 3600)} tracked
-        </span>
+        <div className="panel-head-actions">
+          <CharacterSpot
+            mood={timer.running ? "watching" : "idle"}
+            caption={timer.running ? "Timer live" : "Ready when you are"}
+          />
+          <span className="head-meta">
+            {rows.length} in progress · {hours(totalSeconds / 3600)} tracked
+          </span>
+        </div>
       </section>
 
       <div className="filter-row">

@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { AnimeCard } from "../components/AnimeCard";
-import { EmptyState } from "../components/Mascot";
+import { CharacterSpot, EmptyState } from "../components/Mascot";
 import { Shell } from "../components/Shell";
 import { Toast, useToast } from "../components/Toast";
 import { STATUS_LABELS, hours, progressPct } from "../lib/format";
@@ -64,8 +64,8 @@ export function Shelf() {
   const trackedHours = items.reduce((sum, r) => sum + (r.watch_seconds || 0), 0) / 3600;
 
   return (
-    <Shell>
-      <section className="panel-head">
+    <Shell mascot="idle">
+      <section className="panel-head with-spot">
         <div>
           <p className="eyebrow">Shelf</p>
           <h1>Your list</h1>
@@ -73,9 +73,12 @@ export function Shelf() {
             Plan, watch, hold, drop, or finish. Tracked on this machine against your account.
           </p>
         </div>
-        <span className="head-meta">
-          {items.length} titles · {hours(trackedHours)} tracked
-        </span>
+        <div className="panel-head-actions">
+          <CharacterSpot mood={items.length ? "celebrating" : "empty"} caption="Your shelves" />
+          <span className="head-meta">
+            {items.length} titles · {hours(trackedHours)} tracked
+          </span>
+        </div>
       </section>
 
       <div className="filter-row">

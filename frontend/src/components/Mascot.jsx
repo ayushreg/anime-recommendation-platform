@@ -1,4 +1,5 @@
 import React from "react";
+import { useAppearance } from "../lib/appearance";
 
 const LINES = {
   idle: "Your vault buddy",
@@ -9,14 +10,28 @@ const LINES = {
   empty: "Nothing here yet",
 };
 
+const SRC = {
+  idle: "/mascot-bust.png",
+  searching: "/mascot-search.png",
+  celebrating: "/mascot-celebrate.png",
+  watching: "/mascot-watch.png",
+  thinking: "/mascot-think.png",
+  empty: "/mascot-empty.png",
+};
+
 /**
- * The mascot reacts to what the app is doing. It is one image with a state
- * class, so the personality costs a few lines of CSS rather than a sprite sheet.
+ * The mascot reacts to what the app is doing. Each mood has its own art so
+ * the personality is visible without a sprite sheet.
  */
 export function Mascot({ state = "idle", size = 64, showLine = true, className = "" }) {
+  const { appearance } = useAppearance();
+  if (!appearance.showMascot) return null;
+
+  const src = SRC[state] || SRC.idle;
+
   return (
     <div className={`mascot mascot-${state} ${className}`.trim()} aria-hidden="true">
-      <img src="/mascot-chibi.png" alt="" width={size} height={size} />
+      <img src={src} alt="" width={size} height={size} />
       {showLine && <span>{LINES[state] || LINES.idle}</span>}
     </div>
   );
@@ -25,10 +40,25 @@ export function Mascot({ state = "idle", size = 64, showLine = true, className =
 export function EmptyState({ title, body, action, state = "empty" }) {
   return (
     <div className="empty">
-      <Mascot state={state} size={96} showLine={false} className="empty-mascot" />
+      <Mascot state={state} size={112} showLine={false} className="empty-mascot" />
       <h2>{title}</h2>
       <p>{body}</p>
       {action}
     </div>
+  );
+}
+
+/** Soft character vignette for page headers and sparse surfaces. */
+export function CharacterSpot({ mood = "idle", caption, className = "" }) {
+  const { appearance } = useAppearance();
+  if (!appearance.showCompanion) return null;
+
+  const src = SRC[mood] || SRC.idle;
+
+  return (
+    <aside className={`character-spot ${className}`.trim()} aria-hidden="true">
+      <img src={src} alt="" />
+      {caption ? <span>{caption}</span> : null}
+    </aside>
   );
 }

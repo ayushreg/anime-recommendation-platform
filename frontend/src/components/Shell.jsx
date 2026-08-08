@@ -175,7 +175,7 @@ export function Shell({ children, searchSlot, mascot = "idle" }) {
           <img src="/logo.png" alt="" className="brand-logo" />
           <span>
             <strong>Kura</strong>
-            <small>local vault</small>
+            <small>anime vault</small>
           </span>
         </Link>
 
